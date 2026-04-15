@@ -67,7 +67,7 @@ class MotifMatch:
 # Main class
 # ---------------------------------------------------------------------------
 
-class RNASequence(SeqRecord):
+class Transcript(SeqRecord):
     """
     An RNA transcript record with custom analysis methods.
 
