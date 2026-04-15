@@ -1,29 +1,67 @@
 # DYNORDG
 
-## Description
+Dynamic Ribosome Decision Graphs (RDGs) for simulating and visualizing ribosome flux along transcripts.
 
-A [ribosome decision graph (RDG)](https://www.genome.org/cgi/doi/10.1101/gr.278810.123) represents the paths of the ribosome as it moves along a transcript. At points where the ribosome can alter its state, i.e. when initiating, the path branches and, representing the two different states that the ribosome can now occupy. 
+## Overview
 
-Dynamic RDGs build on this idea by representing the proportional flux of the ribosome through a particular path by the thickness of the path. However, there is another important difference with traditional RDGs. While an the traditional RDG maintains an explicit distinction between different overlapping translons, a dynamic RDG implies their existence by the varaible thickness of the paths. To clarify, the phase of two ribosomes is identical if they have the same downstream potential, i.e. two scanning ribosomes can both recognise a start codon and initiate, changing from the scanning phase to the translating phase. While a translating ribosome cannot initiate at this start codon, and therefore lacks the potential and is subsequently in a different phase.
+A Ribosome Decision Graph (RDG) models the possible paths a ribosome can take along an mRNA transcript.
 
-This package provides a way to build, simulate and render dynamic RDGs
+**Dynamic RDGs** extend this by:
+- Representing ribosome flux using edge thickness
+- Implicitly encoding overlapping translons via flow rather than explicit separation
+- Modeling ribosomal phase states based on downstream potential
 
-## Usage
+This package provides tools to:
+- Build RDGs from transcript sequences
+- Simulate ribosome movement
+- Render dynamic flux graphs
 
-There are 4 main classes that dynordg uses in order to generate and render graphs. 
+## Installation
 
-### class Transcript(SeqRecord)
+```bash
+git clone https://github.com/k-meiklejohn/dynordg.git
+cd dynordg
+pip install -e .
+```
 
-This class inherits properties from biopython's SeqRecord and acts as a way to store information about a transcript that will be used to generate a graph.
+## Quick Start
 
-#### Input
+```python
+from dynordg import Transcript, RiboGraphFlux
 
-The main required input for the Transcript class is a nucleotide sequence. T's will be silently converted to U's'. 
+# Create transcript
+t = Transcript("AUGGCCAUGGCGCCCAGAACUGGGUAA")
 
-#### Properties
-events - a dict in a dict in a dict structure contain all events on the transcript index by position and the type, and finally with probability/drop_probability.
+# Automatically detect start/stop events
+t.auto_stop_starts()
 
-#### Methods
-auto_stop_starts() - finds all AUGs and near cognate start codons and calculates a probability score for them based on kozak scores from [Noderer 2014](https://link.springer.com/article/10.15252/msb.20145136), as well as stop codons whose drop_probablity is set to 1.
+# Build flux graph
+graph = RiboGraphFlux(t.transition_map)
 
-#### 
+# Create render object
+plot = RiboGraphVis(graph)
+
+# Render
+graph.show()
+```
+
+## API Reference
+
+### Transcript
+
+Represents an mRNA transcript.
+
+**Input**
+- `sequence` (str): nucleotide sequence (T → U automatically)
+
+**Attributes**
+- `events`: nested dictionary of transcript events
+- `transition_map`: generated TransitionMap
+
+**Methods**
+- `auto_stop_starts()`: detects start/stop codons and assigns probabilities
+
+## Example Output
+
+![Example RDG](docs/example.png)
+

@@ -417,8 +417,6 @@ class LayoutEngine:
             flux = s.flux_end
             direction = DELTA_SIGN[(s.direction, s.etype)]
             depth = flux * ARROW_DEPTH_SCALE
-            print(f"DROP {s.u}->{s.v}: out0={g.out0} out1={g.out1} dir={s.direction} in0={g.in0} in1={g.in1}")
-            print(f"DROP flux={flux} depth={depth} direction={direction}")
             if s.etype == 'load' and g.out0 and g.out1:
                 # anchor at midpoint of OUT edge
                 x0, y0 = g.out0

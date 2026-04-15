@@ -4,20 +4,22 @@ from ..core import RiboEvent, RiboNode, RiboTransition
 import networkx as nx
 
 class RiboGraphFlux(RiboGraph):
-    def __init__(self, transition_map: TransitionMap, incoming_graph_data=None, half_life_scanning = None, half_life_translation = None, **attr):
+    def __init__(self, transition_map: TransitionMap, incoming_graph_data=None, half_life_scanning: float|None = None, half_life_translation: float|None = None, **attr):
         super().__init__(incoming_graph_data, **attr)
         self.transitions = transition_map
         self.begun = False
+        if incoming_graph_data is not None:
+            raise ValueError('Incoming graph data must be left empty, graph is calculated from transition_map')
         self.half_life_translation = half_life_translation
         self.half_life_scanning = half_life_scanning
         if map:
-            self._construct()   
+            self.construct()   
 
     @classmethod
     def from_transition_map(cls, transition_map: TransitionMap, half_life_translation:float|None =None, half_life_scanning:float|None =None):
         return cls(transition_map=transition_map, half_life_scanning=half_life_scanning, half_life_translation=half_life_translation)
     
-    def _construct(self):
+    def construct(self):
         for u, v in self.transitions.edges:
             if u.phase == -1:
                 self.add_edge(self.bulk_node, u)
@@ -82,7 +84,7 @@ class RiboGraphFlux(RiboGraph):
         """
         self.transitions.add_weighted_edge(source, target, probability)
         self.clear_edges()
-        self._construct()
+        self.construct()
 
     def add_transitions_from(self, tbunch):
         """
@@ -91,7 +93,7 @@ class RiboGraphFlux(RiboGraph):
         """
         self.transitions.add_weighted_edges_from(tbunch)
         self.clear_edges
-        self._construct
+        self.construct
 
     def edge_decay(self, u: RiboNode, v: RiboNode):
         if u.phase == v.phase or (u.phase > 0 and v.phase > 0):

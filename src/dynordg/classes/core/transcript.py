@@ -42,30 +42,6 @@ def start_score(sequence: str, aug: bool):
     
     efficiency = match['efficiency'].values[0]
     return min(efficiency * 0.84/100, 1)
-    
-# ---------------------------------------------------------------------------
-# Helper dataclasses
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class MotifMatch:
-    """A single motif hit within an RNA sequence."""
-    motif: str    # the original query string / pattern
-    start: int
-    end: int
-    matched: str  # actual matched substring (differs from motif for regex)
-
-    def __repr__(self) -> str:
-        return (
-            f"MotifMatch(motif='{self.motif}', "
-            f"start={self.start}, end={self.end}, matched='{self.matched}')"
-        )
-
-
-# ---------------------------------------------------------------------------
-# Main class
-# ---------------------------------------------------------------------------
 
 class Transcript(SeqRecord):
     """
@@ -87,14 +63,6 @@ class Transcript(SeqRecord):
     **kwargs
         Any additional keyword arguments accepted by SeqRecord.
 
-    Examples
-    --------
-    >>> rna = RNASequence("AUGCUACGAUAA", id="tx001", name="demo")
-    >>> rna.gc_content()
-    0.5
-    >>> orfs = rna.find_orfs(min_length=3)
-    >>> orfs[0].protein
-    'MLR'
     """
     def __init__(
         self,
@@ -156,7 +124,7 @@ class Transcript(SeqRecord):
     def __getitem__(self, index):
         parent = super().__getitem__(index)
         
-        new = RNASequence(
+        new = Transcript(
             str(parent.seq),
             id=parent.id,
             name=parent.name,

@@ -36,7 +36,7 @@ class RiboGraphVis(RiboGraph):
         incoming_graph_data: RiboGraphFlux,
         fig_size:  tuple = (12, 6),
         dpi:       int   = 150,
-        log_scale: float = 100,
+        log_scale: float = 5,
         engine:    LayoutEngine  | None = None,
         renderer:   RiboRenderer | None = None,   # RiboRenderer from previous module
         **attr,

@@ -171,7 +171,6 @@ class EdgePainter:
             verts = [g.in_left_base, g.in_right_base, g.in_extent, g.in_left_base]
             codes = [Path.MOVETO, Path.LINETO, Path.LINETO, Path.CLOSEPOLY]
 
-        print(verts)
         patch  = mpatches.PathPatch(
             Path(verts, codes),
             **self._patch_kwargs(facecolor='purple', edgecolor='purple'),
