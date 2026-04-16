@@ -23,25 +23,9 @@ from ..simulation import TransitionMap, RiboGraphFlux
 from ..viz import RiboGraphVis
 import pandas as pd
 import Levenshtein as lv
-from pathlib import Path
 from .transitions import RiboTransition
 
-BASE_DIR = Path(__file__).resolve().parent
 
-AUG_SCORE = pd.read_csv(BASE_DIR / 'aug.csv')
-NON_AUG_SCORE = pd.read_csv(BASE_DIR / 'non_aug.csv')
-
-
-def start_score(sequence: str, aug: bool):
-    df = AUG_SCORE if aug else NON_AUG_SCORE
-    
-    match = df[df['sequence'] == sequence]
-    
-    if match.empty:
-        return 0  # or raise an error / default value
-    
-    efficiency = match['efficiency'].values[0]
-    return min(efficiency * 0.84/100, 1)
 
 class Transcript(SeqRecord):
     """
