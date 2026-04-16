@@ -1,9 +1,26 @@
 from ..graph import RiboGraph
 from .transitionmap import TransitionMap
-from ..core import RiboEvent, RiboNode, RiboTransition
+from ..core import RiboNode, RiboPath
 import networkx as nx
+import warnings
 
 class RiboGraphFlux(RiboGraph):
+
+    """
+    A RiboGraph that contains information about the available paths of a ribosome \
+    aswell as the flux along each path. It is calculated from a TransitionMap, \
+    using the from_transition_map() or upon initialisation by massing a TransitionMap instance. 
+    Attributes:
+    ribopaths: returns a list of lists where each inner list is the path of a 40S subunit through \
+    ribosomal phase space where the 40S maintains continuous association with the mRNA
+
+    translons: returns a list of lists where each each inner list is the path of a ribosome through ribosomal phase space \
+    where the 60S maintains continuos association with the mRNA.
+
+    Methods:
+    flux_proportion(path): returns a float representing the proportion of flux owned by a path. 
+
+    """
     def __init__(self, transition_map: TransitionMap, incoming_graph_data=None, half_life_scanning: float|None = None, half_life_translation: float|None = None, **attr):
         super().__init__(incoming_graph_data, **attr)
         self.transitions = transition_map
@@ -23,10 +40,10 @@ class RiboGraphFlux(RiboGraph):
         for u, v in self.transitions.edges:
             if u.phase == -1:
                 self.add_edge(self.bulk_node, u)
-                flux = flux=self.transitions[u][v]['weight'] 
+                flux = flux=self.transitions[u][v]['weight']
                 self.add_edge(u, v, weight=flux, flux_start=flux, flux_end=flux )
 
-                self._iterate_graph((v), 1) 
+                self._iterate_graph((v), flux) 
 
         self._is_valid()
 
@@ -50,8 +67,9 @@ class RiboGraphFlux(RiboGraph):
             return
         
         next_node = self._downstream_node(node)
+        print(node, next_node)
         if next_node is None:
-            return None
+            return 
     
         #### Calculate decay of ribosomes based on half life ####
 
@@ -67,14 +85,23 @@ class RiboGraphFlux(RiboGraph):
 
         remaining_weight = 1
         for u, v, w in self.transitions.out_edges(next_node, data='weight'):
+
             remaining_weight -= w
             new_flux = endflux * w
-            self.add_edge(u, v, flux_start=new_flux, flux_end=new_flux, weight=w)
+
+            #adds the edge corresponding to the events defined by the transitions from this node
+            self.add_edge(u, v, flux_start=new_flux, flux_end=new_flux, weight=w) 
+
+            if v.phase == -1:
+                #Adds the edge from the from the transcript bulk node to the general bulk node
+                self.add_edge(v, self.bulk_node, flux_start = new_flux, flux_end=new_flux, weight=w)    
+                continue
+
             self._iterate_graph(v, new_flux)
 
         #### Continue graph on same phase if weight remaining ####
         if remaining_weight == 0:
-            return None
+            return
         else:
             self._iterate_graph(next_node, endflux*remaining_weight, weight=remaining_weight)
     
@@ -121,7 +148,8 @@ class RiboGraphFlux(RiboGraph):
         """
         paths = []
         for loading in self.successors(self.bulk_node):
-            paths.extend(nx.all_simple_edge_paths(self, loading, self.bulk_node))
+            for path in nx.all_simple_edge_paths(self, loading, self.bulk_node):
+                paths.append(RiboPath(path))
         return paths
     
     @property
@@ -193,7 +221,7 @@ class RiboGraphFlux(RiboGraph):
                 in_flux += flux
 
         if out_flux != in_flux:
-            return None
-            # raise ValueError(f'Flux in does not equal flux out In:{in_flux} vs Out:{out_flux}')
+            return
+            raise RuntimeError(f'Flux in: {in_flux} does not equal Flux out: {out_flux}')
     
     

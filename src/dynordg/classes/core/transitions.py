@@ -1,6 +1,12 @@
 from .nodes import RiboNode
 
 class RiboTransition(tuple):
+    """
+    A RiboTransition is an edge of a graph that shows a possible transition between phases, \
+    it consists of a initial position in ribosomal phase space, (source, RiboNode), a terminal position (target, RiboNode), \
+    and the probability that a ribosome reaching the source position will choose that path.
+    """
+    
     def __new__(cls, *args):
         if len(args) == 1 and isinstance(args[0], (tuple, RiboTransition)):
             data = args[0]

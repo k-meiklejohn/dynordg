@@ -12,7 +12,7 @@ A Ribosome Decision Graph (RDG) models the possible paths a ribosome can take al
 - Modeling ribosomal phase states based on downstream potential
 
 This package provides tools to:
-- Build RDGs from transcript sequences
+- Build RDGs from transcript sequences, or from user defined phase transistions
 - Simulate ribosome movement
 - Render dynamic flux graphs
 
@@ -62,6 +62,8 @@ Represents an mRNA transcript.
 - `auto_stop_starts()`: detects start/stop codons and assigns probabilities
 
 ## Example Output
+
+Below is example dynamic RDG (if not a realistic one):
 
 ![Example RDG](docs/example.png)
 

@@ -1,4 +1,11 @@
 class RiboNode(tuple):
+    """
+    Special 2-tuple that refers to a position in Ribosomal phase space, the first integer \
+    refers to the nucleotide position on a transcript, while the second refers to the phase \
+    of the ribosome: -1 for not associated, 0 for scanning and 1,2,3 for translating in the phase \
+    where phase (frame) = position % 3 + 1
+    
+    """
     def __new__(cls, *args):
         if len(args) == 1 and isinstance(args[0], (tuple, RiboNode)):
             coords = args[0]

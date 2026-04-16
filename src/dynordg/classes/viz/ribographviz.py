@@ -11,8 +11,6 @@ consumes typed dataclasses and produces typed dataclasses:
   Phase 3  compute_geometries()  NodeLayout     →  dict[edge, EdgeGeom]
   Phase 4  align_layout()        EdgeGeom dict  →  LayoutResult
 
-The LayoutResult is the *only* thing the renderer ever reads.
-No layout state lives in edge/node dicts on the graph itself.
 """
 
 from __future__ import annotations
@@ -36,7 +34,7 @@ class RiboGraphVis(RiboGraph):
         incoming_graph_data: RiboGraphFlux,
         fig_size:  tuple = (12, 6),
         dpi:       int   = 150,
-        log_scale: float = 5,
+        log_scale: float = 1,
         engine:    LayoutEngine  | None = None,
         renderer:   RiboRenderer | None = None,   # RiboRenderer from previous module
         **attr,

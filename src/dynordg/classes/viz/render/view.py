@@ -187,6 +187,7 @@ class EdgePainter:
             edgecolor=self.style.edgecolor,
             alpha=self.style.alpha,
             linewidth=0,
+            snap=False
         )
         kw.update(overrides)
         return kw

@@ -3,7 +3,7 @@ from networkx import DiGraph
 
 class RiboGraph(DiGraph):
     """
-    Digraph that only accepts RiboNode instances as nodes
+    A NetworkX Digraph that only accepts RiboNode instances as nodes
     """
 
     def __init__(self, incoming_graph_data = None, **attr):

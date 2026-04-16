@@ -6,9 +6,9 @@ def start_score(sequence: str, aug: bool):
     """
 
     if len(sequence) != 11 and aug:
-        raise ValueError(f'Sequence must be length 11 when aug is True, got {len(sequence)}')
+        raise ValueError(f'Sequence must be length 11 when aug is True, got {len(sequence)}: {sequence}')
     elif len(sequence) != 8 and not aug:
-        raise ValueError(f'Sequence must be length 8 when aug is false, got {len(sequence)}')
+        raise ValueError(f'Sequence must be length 8 when aug is false, got {len(sequence)}: {sequence}')
     
     df = AUG_SCORE if aug else NON_AUG_SCORE
 
