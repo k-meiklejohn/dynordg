@@ -21,7 +21,7 @@ class RiboGraphFlux(RiboGraph):
     flux_proportion(path): returns a float representing the proportion of flux owned by a path. 
 
     """
-    def __init__(self, transition_map: TransitionMap, incoming_graph_data=None, half_life_scanning: float|None = None, half_life_translation: float|None = None, **attr):
+    def __init__(self, transition_map: TransitionMap, incoming_graph_data=None, half_life_scanning: float|None = None, half_life_translation: float|None = None, cutoff=0.0, **attr):
         super().__init__(incoming_graph_data, **attr)
         self.transitions = transition_map
         self.begun = False
@@ -30,20 +30,20 @@ class RiboGraphFlux(RiboGraph):
         self.half_life_translation = half_life_translation
         self.half_life_scanning = half_life_scanning
         if map:
-            self.construct()   
+            self.construct(cutoff=cutoff)   
 
     @classmethod
     def from_transition_map(cls, transition_map: TransitionMap, half_life_translation:float|None =None, half_life_scanning:float|None =None):
         return cls(transition_map=transition_map, half_life_scanning=half_life_scanning, half_life_translation=half_life_translation)
     
-    def construct(self):
+    def construct(self, cutoff=0.0):
         for u, v in self.transitions.edges:
             if u.phase == -1:
                 self.add_edge(self.bulk_node, u)
                 flux = flux=self.transitions[u][v]['weight']
                 self.add_edge(u, v, weight=flux, flux_start=flux, flux_end=flux )
 
-                self._iterate_graph((v), flux) 
+                self._iterate_graph((v), flux, cutoff=cutoff) 
 
         self._is_valid()
 
@@ -61,13 +61,13 @@ class RiboGraphFlux(RiboGraph):
 
                             node.phase))
     
-    def _iterate_graph(self, node: RiboNode, flux, weight=1):
-
+    def _iterate_graph(self, node: RiboNode, flux, weight=1, cutoff=0.0):
+        if flux < cutoff:
+            return
         if node==self.bulk_node:
             return
         
         next_node = self._downstream_node(node)
-        print(node, next_node)
         if next_node is None:
             return 
     
@@ -97,7 +97,7 @@ class RiboGraphFlux(RiboGraph):
                 self.add_edge(v, self.bulk_node, flux_start = new_flux, flux_end=new_flux, weight=w)    
                 continue
 
-            self._iterate_graph(v, new_flux)
+            self._iterate_graph(v, new_flux, w)
 
         #### Continue graph on same phase if weight remaining ####
         if remaining_weight == 0:
