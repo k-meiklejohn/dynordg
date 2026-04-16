@@ -24,6 +24,7 @@ from ..viz import RiboGraphVis
 import pandas as pd
 import Levenshtein as lv
 from .transitions import RiboTransition
+from ...functions import start_score
 
 
 

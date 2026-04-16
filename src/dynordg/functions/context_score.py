@@ -1,7 +1,17 @@
 from ..data import AUG_SCORE, NON_AUG_SCORE
 
 def start_score(sequence: str, aug: bool):
+    """
+    Calculate the probabiltily of initation of a start site. If aug is True, 
+    """
+
+    if len(sequence) != 11 and aug:
+        raise ValueError(f'Sequence must be length 11 when aug is True, got {len(sequence)}')
+    elif len(sequence) != 8 and not aug:
+        raise ValueError(f'Sequence must be length 8 when aug is false, got {len(sequence)}')
+    
     df = AUG_SCORE if aug else NON_AUG_SCORE
+
     
     match = df[df['sequence'] == sequence]
     
