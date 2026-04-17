@@ -48,7 +48,7 @@ class RiboGraph(DiGraph):
                     merged[key] = new_val
                 elif new_val is None:
                     merged[key] = existing_val
-                elif key.startswith('flux'):
+                elif key.startswith('flux') or key == 'weight': #this may change
                     merged[key] = existing_val + new_val
                 else:
                     merged[key] = new_val  # overwrite non-flux attributes

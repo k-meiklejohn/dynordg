@@ -62,8 +62,7 @@ class RiboGraphFlux(RiboGraph):
                             node.phase))
     
     def _iterate_graph(self, node: RiboNode, flux, weight=1, cutoff=0.0):
-        if flux < cutoff:
-            return
+
         if node==self.bulk_node:
             return
         
@@ -86,8 +85,10 @@ class RiboGraphFlux(RiboGraph):
         remaining_weight = 1
         for u, v, w in self.transitions.out_edges(next_node, data='weight'):
 
-            remaining_weight -= w
             new_flux = endflux * w
+            if new_flux < cutoff:
+                continue
+            remaining_weight -= w
 
             #adds the edge corresponding to the events defined by the transitions from this node
             self.add_edge(u, v, flux_start=new_flux, flux_end=new_flux, weight=w) 
@@ -97,13 +98,15 @@ class RiboGraphFlux(RiboGraph):
                 self.add_edge(v, self.bulk_node, flux_start = new_flux, flux_end=new_flux, weight=w)    
                 continue
 
-            self._iterate_graph(v, new_flux, w)
+            self._iterate_graph(v, new_flux, w, cutoff=cutoff)
 
         #### Continue graph on same phase if weight remaining ####
         if remaining_weight == 0:
             return
         else:
-            self._iterate_graph(next_node, endflux*remaining_weight, weight=remaining_weight)
+            self._iterate_graph(next_node, endflux*remaining_weight, weight=remaining_weight, cutoff=cutoff)
+
+    
     
     def add_transition(self, source, target, probability):
         """
