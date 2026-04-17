@@ -75,75 +75,50 @@ class RiboGraphFlux(RiboGraph):
 
                             node.phase))
     
-    def _iterate_graph(self, node: RiboNode, flux, weight=1, cutoff=0.0):
+    def _iterate_graph(self, node: RiboNode, flux, weight=1):
 
-        if node == self.bulk_node:
+        if node==self.bulk_node:
             return
-
+        
         next_node = self._downstream_node(node)
         if next_node is None:
-            return
+            return 
+    
+        #### Calculate decay of ribosomes based on half life ####
 
-        # --- decay on this hop ---
         endflux = flux * self.edge_decay(node, next_node)
         drop_flux = flux - endflux
         if drop_flux != 0:
             drop_node = RiboNode(next_node.position, -1)
-            self.add_edge(next_node, drop_node, flux_start=drop_flux, flux_end=drop_flux, weight=weight * drop_flux / flux)
-            self.add_edge(drop_node, self.bulk_node, flux_start=drop_flux, flux_end=drop_flux, weight=1)
+            self.add_edge(next_node, drop_node, flux_start=drop_flux, flux_end=drop_flux, weight=weight*drop_flux/flux) # this is the drop edge
+            self.add_edge(drop_node, self.bulk_node, flux_start=drop_flux, flux_end=drop_flux, weight=1) #returning to the bulk
+        self.add_edge(node, next_node, flux_start=flux, flux_end = endflux, weight=weight*endflux/flux, decay=drop_flux) # this is the horizontal edge
 
-        # --- initialise chain if this is the first hop ---
-        if _chain_start is None:
-            _chain_start = node
-            _chain_flux_start = flux
+        #### calculate flux for each edge off next node ####
 
-        _accumulated_decay += drop_flux
-
-        # --- work out which transitions are actually taken ---
-        out_transitions = list(self.transitions.out_edges(next_node, data='weight'))
         remaining_weight = 1
-        taken_transitions = []
-        for u, v, w in out_transitions:
+        for u, v, w in self.transitions.out_edges(next_node, data='weight'):
+
             new_flux = endflux * w
-            if new_flux < cutoff:
-                continue
             remaining_weight -= w
 
-        is_branch = len(taken_transitions) > 0 or remaining_weight == 0
+            #adds the edge corresponding to the events defined by the transitions from this node
+            self.add_edge(u, v, flux_start=new_flux, flux_end=new_flux, weight=w) 
 
-        if not is_branch:
-            # pure passthrough — extend chain without emitting
-            self._iterate_graph(
-                next_node, endflux, weight=weight, cutoff=cutoff,
-                _chain_start=_chain_start,
-                _chain_flux_start=_chain_flux_start,
-                _accumulated_decay=_accumulated_decay,
-            )
-            return
-
-        # --- real branching point: flush chain as one compressed edge ---
-        self.add_edge(
-            _chain_start, next_node,
-            flux_start=_chain_flux_start,
-            flux_end=endflux,
-            weight=weight,
-            decay=_accumulated_decay,
-        )
-
-        # --- emit transition edges and recurse ---
-        for u, v, w, new_flux in taken_transitions:
-            self.add_edge(u, v, flux_start=new_flux, flux_end=new_flux, weight=w)
             if v.phase == -1:
-                self.add_edge(v, self.bulk_node, flux_start=new_flux, flux_end=new_flux, weight=w)
+                #Adds the edge from the from the transcript bulk node to the general bulk node
+                self.add_edge(v, self.bulk_node, flux_start = new_flux, flux_end=new_flux, weight=w)    
                 continue
 
-            self._iterate_graph(v, new_flux, w, cutoff=cutoff)
+            self._iterate_graph(v, new_flux, w)
 
         #### Continue graph on same phase if weight remaining ####
         if remaining_weight == 0:
             return
         else:
-            self._iterate_graph(next_node, endflux*remaining_weight, weight=remaining_weight, cutoff=cutoff)
+            self._iterate_graph(next_node, endflux*remaining_weight, weight=remaining_weight)
+    
+
 
 
     
