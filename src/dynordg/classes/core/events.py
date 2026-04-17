@@ -112,8 +112,9 @@ class RiboEvent(tuple):
                 raise ValueError("Probabilities must be float or int")
             elif all(x == 0 for x in data[2:]):
                 raise ValueError(f'At least one probability must be non-zero')
-            if sum(data[2:]) > 1:
-                raise ValueError(f"Sum of Probabilities for RiboEvent cannot exceed 1 or be 0, got {sum(data[2:])}")
+            if not data[1] in ('cap', 'ires'):
+                if sum(data[2:]) > 1:
+                    raise ValueError(f"Sum of Probabilities for non-loading ('cap', 'ires') RiboEvent cannot exceed 1 or be 0, got {sum(data[2:])}")
 
             return super().__new__(cls, data)
     

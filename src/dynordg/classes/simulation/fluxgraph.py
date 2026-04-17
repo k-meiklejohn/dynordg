@@ -21,7 +21,7 @@ class RiboGraphFlux(RiboGraph):
     flux_proportion(path): returns a float representing the proportion of flux owned by a path. 
 
     """
-    def __init__(self, transition_map: TransitionMap, incoming_graph_data=None, half_life_scanning: float|None = None, half_life_translation: float|None = None, cutoff=0.0, **attr):
+    def __init__(self, transition_map: TransitionMap, incoming_graph_data=None, half_life_scanning: float|None = None, half_life_translation: float|None = None, weight_cutoff=0.0, **attr):
         super().__init__(incoming_graph_data, **attr)
         self.transitions = transition_map
         self.begun = False
@@ -29,21 +29,35 @@ class RiboGraphFlux(RiboGraph):
             raise ValueError('Incoming graph data must be left empty, graph is calculated from transition_map')
         self.half_life_translation = half_life_translation
         self.half_life_scanning = half_life_scanning
+        self.weight_cutoff = weight_cutoff
         if map:
-            self.construct(cutoff=cutoff)   
+            self.construct()   
 
     @classmethod
     def from_transition_map(cls, transition_map: TransitionMap, half_life_translation:float|None =None, half_life_scanning:float|None =None):
         return cls(transition_map=transition_map, half_life_scanning=half_life_scanning, half_life_translation=half_life_translation)
     
-    def construct(self, cutoff=0.0):
+    def construct(self,):
+        below_cutoff = []
+
         for u, v in self.transitions.edges:
+            if self.transitions[u][v]['weight'] < self.weight_cutoff:
+                below_cutoff.append((u,v))
+        self.transitions.remove_edges_from(below_cutoff)
+
+        nodes_to_remove = [node for node, degree in self.transitions.degree() if degree == 0]
+
+        self.transitions.remove_nodes_from(nodes_to_remove)
+        
+        for u, v in self.transitions.edges:
+
             if u.phase == -1:
                 self.add_edge(self.bulk_node, u)
                 flux = flux=self.transitions[u][v]['weight']
                 self.add_edge(u, v, weight=flux, flux_start=flux, flux_end=flux )
 
-                self._iterate_graph((v), flux, cutoff=cutoff) 
+                self._iterate_graph((v), flux) 
+                self._normalize_flux()
 
         self._is_valid()
 
@@ -61,8 +75,7 @@ class RiboGraphFlux(RiboGraph):
 
                             node.phase))
     
-    def _iterate_graph(self, node: RiboNode, flux, weight=1, cutoff=0.0,
-                    _chain_start=None, _chain_flux_start=None, _accumulated_decay=0):
+    def _iterate_graph(self, node: RiboNode, flux, weight=1, cutoff=0.0):
 
         if node == self.bulk_node:
             return
@@ -94,7 +107,6 @@ class RiboGraphFlux(RiboGraph):
             new_flux = endflux * w
             if new_flux < cutoff:
                 continue
-            taken_transitions.append((u, v, w, new_flux))
             remaining_weight -= w
 
         is_branch = len(taken_transitions) > 0 or remaining_weight == 0
@@ -124,14 +136,16 @@ class RiboGraphFlux(RiboGraph):
             if v.phase == -1:
                 self.add_edge(v, self.bulk_node, flux_start=new_flux, flux_end=new_flux, weight=w)
                 continue
+
             self._iterate_graph(v, new_flux, w, cutoff=cutoff)
 
-        # --- continue straight ahead if weight remains ---
-        if remaining_weight > 0:
-            self._iterate_graph(next_node, endflux * remaining_weight,
-                                weight=remaining_weight, cutoff=cutoff)
+        #### Continue graph on same phase if weight remaining ####
+        if remaining_weight == 0:
+            return
+        else:
+            self._iterate_graph(next_node, endflux*remaining_weight, weight=remaining_weight, cutoff=cutoff)
 
-    
+
     
     def add_transition(self, source, target, probability):
         """
@@ -165,6 +179,29 @@ class RiboGraphFlux(RiboGraph):
         
         else:
             return 1
+
+    def _normalize_flux(self):
+        flux_keys = ('flux_start', 'flux_end', 'decay')
+        fluxes = []
+        for u,v, data in self.edges(data=True):
+            for key in flux_keys:
+                if key in data:
+                    fluxes.append(data[key])
+        fluxes = set(fluxes)
+        max_flux = max(fluxes)
+        
+        factor = 1/ max_flux if max_flux > 1 else 1
+        if factor == 1:
+            return
+        flux_dict = {}
+        for flux in fluxes:
+            flux_dict[flux] = flux * factor
+        for u,v,data in self.edges(data=True):
+            for key in flux_keys:
+                if key in data:
+                    data[key] = flux_dict[data[key]]
+            
+
 
     def _is_valid(self):
         self._valid_in_out()

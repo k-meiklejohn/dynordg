@@ -55,6 +55,7 @@ class TransitionMap(RiboGraph):
     def _is_valid(self):
         self._is_valid_weight()
 
+
     def to_fluxgraph(self, half_life_translation = None, half_life_scanning = None):
         from .fluxgraph import RiboGraphFlux
         return RiboGraphFlux(transition_map=self, half_life_translation=half_life_translation, half_life_scanning=half_life_scanning)
