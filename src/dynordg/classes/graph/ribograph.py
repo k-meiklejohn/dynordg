@@ -55,3 +55,4 @@ class RiboGraph(DiGraph):
             super().add_edge(u, v, **merged)
         else:
             super().add_edge(u, v, **attr)
+

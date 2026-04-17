@@ -21,7 +21,7 @@ class RiboGraphFlux(RiboGraph):
     flux_proportion(path): returns a float representing the proportion of flux owned by a path. 
 
     """
-    def __init__(self, transition_map: TransitionMap, incoming_graph_data=None, half_life_scanning: float|None = None, half_life_translation: float|None = None, cutoff=0.0, **attr):
+    def __init__(self, transition_map: TransitionMap, incoming_graph_data=None, half_life_scanning: float|None = None, half_life_translation: float|None = None, weight_cutoff=0.0, **attr):
         super().__init__(incoming_graph_data, **attr)
         self.transitions = transition_map
         self.begun = False
@@ -29,21 +29,35 @@ class RiboGraphFlux(RiboGraph):
             raise ValueError('Incoming graph data must be left empty, graph is calculated from transition_map')
         self.half_life_translation = half_life_translation
         self.half_life_scanning = half_life_scanning
+        self.weight_cutoff = weight_cutoff
         if map:
-            self.construct(cutoff=cutoff)   
+            self.construct()   
 
     @classmethod
     def from_transition_map(cls, transition_map: TransitionMap, half_life_translation:float|None =None, half_life_scanning:float|None =None):
         return cls(transition_map=transition_map, half_life_scanning=half_life_scanning, half_life_translation=half_life_translation)
     
-    def construct(self, cutoff=0.0):
+    def construct(self,):
+        below_cutoff = []
+
         for u, v in self.transitions.edges:
+            if self.transitions[u][v]['weight'] < self.weight_cutoff:
+                below_cutoff.append((u,v))
+        self.transitions.remove_edges_from(below_cutoff)
+
+        nodes_to_remove = [node for node, degree in self.transitions.degree() if degree == 0]
+
+        self.transitions.remove_nodes_from(nodes_to_remove)
+        
+        for u, v in self.transitions.edges:
+
             if u.phase == -1:
                 self.add_edge(self.bulk_node, u)
                 flux = flux=self.transitions[u][v]['weight']
                 self.add_edge(u, v, weight=flux, flux_start=flux, flux_end=flux )
 
-                self._iterate_graph((v), flux, cutoff=cutoff) 
+                self._iterate_graph((v), flux) 
+                self._normalize_flux()
 
         self._is_valid()
 
@@ -61,121 +75,51 @@ class RiboGraphFlux(RiboGraph):
 
                             node.phase))
     
-    # def _iterate_graph(self, node: RiboNode, flux, weight=1, cutoff=0.0):
+    def _iterate_graph(self, node: RiboNode, flux, weight=1):
 
-    #     if node==self.bulk_node:
-    #         return
-        
-    #     next_node = self._downstream_node(node)
-    #     if next_node is None:
-    #         return 
-    
-    #     #### Calculate decay of ribosomes based on half life ####
-
-    #     endflux = flux * self.edge_decay(node, next_node)
-    #     drop_flux = flux - endflux
-    #     if drop_flux != 0:
-    #         drop_node = RiboNode(next_node.position, -1)
-    #         self.add_edge(next_node, drop_node, flux_start=drop_flux, flux_end=drop_flux, weight=weight*drop_flux/flux) # this is the drop edge
-    #         self.add_edge(drop_node, self.bulk_node, flux_start=drop_flux, flux_end=drop_flux, weight=1) #returning to the bulk
-    #     self.add_edge(node, next_node, flux_start=flux, flux_end = endflux, weight=weight*endflux/flux, decay=drop_flux) # this is the horizontal edge
-
-    #     #### calculate flux for each edge off next node ####
-
-    #     remaining_weight = 1
-    #     for u, v, w in self.transitions.out_edges(next_node, data='weight'):
-
-    #         new_flux = endflux * w
-    #         if new_flux < cutoff:
-    #             continue
-    #         remaining_weight -= w
-
-    #         #adds the edge corresponding to the events defined by the transitions from this node
-    #         self.add_edge(u, v, flux_start=new_flux, flux_end=new_flux, weight=w) 
-
-    #         if v.phase == -1:
-    #             #Adds the edge from the from the transcript bulk node to the general bulk node
-    #             self.add_edge(v, self.bulk_node, flux_start = new_flux, flux_end=new_flux, weight=w)    
-    #             continue
-
-    #         self._iterate_graph(v, new_flux, w, cutoff=cutoff)
-
-    #     #### Continue graph on same phase if weight remaining ####
-    #     if remaining_weight == 0:
-    #         return
-    #     else:
-    #         self._iterate_graph(next_node, endflux*remaining_weight, weight=remaining_weight, cutoff=cutoff)
-
-    def _iterate_graph(self, node: RiboNode, flux, weight=1, cutoff=0.0,
-                    _chain_start=None, _chain_flux_start=None, _accumulated_decay=0):
-
-        if node == self.bulk_node:
+        if node==self.bulk_node:
             return
-
+        
         next_node = self._downstream_node(node)
         if next_node is None:
-            return
+            return 
+    
+        #### Calculate decay of ribosomes based on half life ####
 
-        # --- decay on this hop ---
         endflux = flux * self.edge_decay(node, next_node)
         drop_flux = flux - endflux
         if drop_flux != 0:
             drop_node = RiboNode(next_node.position, -1)
-            self.add_edge(next_node, drop_node, flux_start=drop_flux, flux_end=drop_flux, weight=weight * drop_flux / flux)
-            self.add_edge(drop_node, self.bulk_node, flux_start=drop_flux, flux_end=drop_flux, weight=1)
+            self.add_edge(next_node, drop_node, flux_start=drop_flux, flux_end=drop_flux, weight=weight*drop_flux/flux) # this is the drop edge
+            self.add_edge(drop_node, self.bulk_node, flux_start=drop_flux, flux_end=drop_flux, weight=1) #returning to the bulk
+        self.add_edge(node, next_node, flux_start=flux, flux_end = endflux, weight=weight*endflux/flux, decay=drop_flux) # this is the horizontal edge
 
-        # --- initialise chain if this is the first hop ---
-        if _chain_start is None:
-            _chain_start = node
-            _chain_flux_start = flux
+        #### calculate flux for each edge off next node ####
 
-        _accumulated_decay += drop_flux
-
-        # --- work out which transitions are actually taken ---
-        out_transitions = list(self.transitions.out_edges(next_node, data='weight'))
         remaining_weight = 1
-        taken_transitions = []
-        for u, v, w in out_transitions:
+        for u, v, w in self.transitions.out_edges(next_node, data='weight'):
+
             new_flux = endflux * w
-            if new_flux < cutoff:
-                continue
-            taken_transitions.append((u, v, w, new_flux))
             remaining_weight -= w
 
-        is_branch = len(taken_transitions) > 0 or remaining_weight == 0
+            #adds the edge corresponding to the events defined by the transitions from this node
+            self.add_edge(u, v, flux_start=new_flux, flux_end=new_flux, weight=w) 
 
-        if not is_branch:
-            # pure passthrough — extend chain without emitting
-            self._iterate_graph(
-                next_node, endflux, weight=weight, cutoff=cutoff,
-                _chain_start=_chain_start,
-                _chain_flux_start=_chain_flux_start,
-                _accumulated_decay=_accumulated_decay,
-            )
-            return
-
-        # --- real branching point: flush chain as one compressed edge ---
-        self.add_edge(
-            _chain_start, next_node,
-            flux_start=_chain_flux_start,
-            flux_end=endflux,
-            weight=weight,
-            decay=_accumulated_decay,
-        )
-
-        # --- emit transition edges and recurse ---
-        for u, v, w, new_flux in taken_transitions:
-            self.add_edge(u, v, flux_start=new_flux, flux_end=new_flux, weight=w)
             if v.phase == -1:
-                self.add_edge(v, self.bulk_node, flux_start=new_flux, flux_end=new_flux, weight=w)
+                #Adds the edge from the from the transcript bulk node to the general bulk node
+                self.add_edge(v, self.bulk_node, flux_start = new_flux, flux_end=new_flux, weight=w)    
                 continue
-            self._iterate_graph(v, new_flux, w, cutoff=cutoff)
 
-        # --- continue straight ahead if weight remains ---
-        if remaining_weight > 0:
-            self._iterate_graph(next_node, endflux * remaining_weight,
-                                weight=remaining_weight, cutoff=cutoff)
-            
+            self._iterate_graph(v, new_flux, w)
+
+        #### Continue graph on same phase if weight remaining ####
+        if remaining_weight == 0:
+            return
+        else:
+            self._iterate_graph(next_node, endflux*remaining_weight, weight=remaining_weight)
+    
+
+
     
     def add_transition(self, source, target, probability):
         """
@@ -209,6 +153,29 @@ class RiboGraphFlux(RiboGraph):
         
         else:
             return 1
+
+    def _normalize_flux(self):
+        flux_keys = ('flux_start', 'flux_end', 'decay')
+        fluxes = []
+        for u,v, data in self.edges(data=True):
+            for key in flux_keys:
+                if key in data:
+                    fluxes.append(data[key])
+        fluxes = set(fluxes)
+        max_flux = max(fluxes)
+        
+        factor = 1/ max_flux if max_flux > 1 else 1
+        if factor == 1:
+            return
+        flux_dict = {}
+        for flux in fluxes:
+            flux_dict[flux] = flux * factor
+        for u,v,data in self.edges(data=True):
+            for key in flux_keys:
+                if key in data:
+                    data[key] = flux_dict[data[key]]
+            
+
 
     def _is_valid(self):
         self._valid_in_out()

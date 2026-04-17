@@ -498,27 +498,91 @@ class LayoutEngine:
 
     # ── 4a: horizontal alignment ──────────────────────────────────────────────
 
+    # def _align_horizontal(
+    #     self,
+    #     graph:   RiboGraph,
+    #     geoms:   dict[Edge, EdgeGeom],
+    #     layouts: dict[RiboNode, NodeLayout],
+    # ) -> None:
+    #     for node in list(topological_sort(graph)):
+    #         if node.phase == -1:
+    #             continue
+    #         for slot in layouts[node].out_slots:
+    #             g = geoms[slot.edge]
+    #             if g.is_event or g.out_bot is None or g.in_bot is None:
+    #                 continue
+    #             agreed = max(g.out_bot[1], g.in_bot[1])
+    #             u, v   = slot.edge
+    #             if agreed > g.out_bot[1]:
+    #                 self._shift_node_geoms(u, agreed - g.out_bot[1], 'y',
+    #                                        geoms, layouts, graph)
+    #             if agreed > g.in_bot[1]:
+    #                 self._shift_node_geoms(v, agreed - g.in_bot[1], 'y',
+    #                                        geoms, layouts, graph)
+    #     unequal = False
+    #     for node in graph.nodes:
+    #         if node.phase == -1:
+    #             continue
+    #         for slot in layouts[node].out_slots:
+    #             g = geoms[slot.edge]
+    #             if g.is_event or g.out_bot is None or g.in_bot is None:
+    #                 continue
+    #             if g.out_bot != g.in_bot:
+    #                 unequal = True
+    #                 break
+    #     if unequal:
+    #         self._align_horizontal(graph, geoms, layouts)
+
     def _align_horizontal(
         self,
         graph:   RiboGraph,
         geoms:   dict[Edge, EdgeGeom],
         layouts: dict[RiboNode, NodeLayout],
     ) -> None:
-        for node in reversed(list(topological_sort(graph))):
-            if node.phase == -1:
-                continue
-            for slot in layouts[node].out_slots:
-                g = geoms[slot.edge]
-                if g.is_event or g.out_bot is None or g.in_bot is None:
+        MAX_PASSES = len(list(graph.nodes)) * 4 + 10
+
+        for _ in range(MAX_PASSES):
+            changed = False
+
+            for node in topological_sort(graph):
+                if node.phase == -1:
                     continue
-                agreed = max(g.out_bot[1], g.in_bot[1])
-                u, v   = slot.edge
-                if agreed > g.out_bot[1]:
-                    self._shift_node_geoms(u, agreed - g.out_bot[1], 'y',
-                                           geoms, layouts, graph)
-                if agreed > g.in_bot[1]:
-                    self._shift_node_geoms(v, agreed - g.in_bot[1], 'y',
-                                           geoms, layouts, graph)
+
+                # Collect the max agreed-y this node needs to shift to,
+                # across ALL its edges simultaneously
+                max_out_delta = 0.0
+                max_in_delta  = 0.0
+
+                for slot in layouts[node].out_slots:
+                    g = geoms[slot.edge]
+                    if g.is_event or g.out_bot is None or g.in_bot is None:
+                        continue
+                    agreed = max(g.out_bot[1], g.in_bot[1])
+                    if agreed > g.out_bot[1]:
+                        max_out_delta = max(max_out_delta, agreed - g.out_bot[1])
+
+                for slot in layouts[node].in_slots:
+                    g = geoms[slot.edge]
+                    if g.is_event or g.out_bot is None or g.in_bot is None:
+                        continue
+                    agreed = max(g.out_bot[1], g.in_bot[1])
+                    if agreed > g.in_bot[1]:
+                        max_in_delta = max(max_in_delta, agreed - g.in_bot[1])
+
+                # Apply the largest single shift needed — one move settles all edges
+                delta = max(max_out_delta, max_in_delta)
+                if delta > 1e-9:
+                    self._shift_node_geoms(node, delta, 'y', geoms, layouts, graph)
+                    changed = True
+
+            if not changed:
+                break
+        else:
+            import warnings
+            warnings.warn(
+                f"_align_horizontal did not fully converge; layout may be approximate.",
+                stacklevel=2,
+            )
 
     # ── 4b: phase stacking ────────────────────────────────────────────────────
 
@@ -530,16 +594,24 @@ class LayoutEngine:
         buffer:  float,
     ) -> None:
         def phase_nodes(phase: int) -> list[RiboNode]:
-            core   = [n for n in graph.nodes if n.phase == phase]
+            core = [n for n in graph.nodes if n.phase == phase]
+
             adj_m1 = [
-                n for n in graph.nodes if n.phase == -1
-                if any(
-                    (graph.has_edge(n, nb) and nb.phase == phase) or
-                    (graph.has_edge(nb, n) and nb.phase == phase)
-                    for nb in graph.neighbors(n)
+                n for n in graph.nodes
+                if n.phase == -1 and any(
+                    graph.has_edge(n, nb) and nb.phase == phase
+                    for nb in graph.successors(n)
                 )
             ]
-            return core + adj_m1
+
+            adj_m2 = [
+                n for n in graph.nodes
+                if n.phase == -1 and any(
+                    u.phase == phase for u, _ in graph.in_edges(n)
+                )
+            ]
+
+            return core + adj_m1 + adj_m2
 
         def min_y(nodes: list[RiboNode]) -> float:
             pts = self._points_exclusive(nodes, geoms, graph)

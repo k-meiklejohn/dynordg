@@ -34,7 +34,7 @@ class RiboTransition(tuple):
 
         if not isinstance(prob, (int, float)):
             raise TypeError(f"Probability must be 'float' or 'int', got {type(prob).__name__!r}")
-        if not 0 < prob <= 1:
+        if not 0 < prob <= 1 and source.phase != -1:
             raise ValueError(f"Probability must be in range (0, 1], got {prob}")
 
         return super().__new__(cls, (source, target, prob))

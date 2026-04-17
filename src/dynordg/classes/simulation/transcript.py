@@ -137,7 +137,7 @@ class Transcript(SeqRecord):
         return new
 
 
-    def auto_stop_starts(self, cutoff=0.001):
+    def auto_stop_starts(self, cutoff=0.0):
         """
         Automatically adds initiation and termination events to the transcript based on sequence.
         Uses scores based on Noderer 2014 to calculate probabilities of initation.
