@@ -174,11 +174,7 @@ class RiboGraphFlux(RiboGraph):
             self._iterate_graph(next_node, endflux*remaining_weight, weight=remaining_weight, retained=retained)
 
     def _collapse_unused_nodes(self):
-        out_flux = 0
-        for u,v, flux in self.in_edges(self.bulk_node, data='flux_end'):
-            out_flux += flux
-
-        print(out_flux)
+        
         changed = True
         test_graph = deepcopy(self)
         test_graph.remove_node(self.bulk_node)
@@ -268,17 +264,13 @@ class RiboGraphFlux(RiboGraph):
                                 decay=drop_flux) # this is the horizontal edge
                     changed = True
                     break
-        total = 0       
         for u, v, data in self.edges(data=True):
             if u.phase == -1 and v == self.bulk_node:
                 influx = 0
                 for _, _, flux in self.in_edges(u, data='flux_end'):
                     influx += flux
-                print('influx:', influx)
-                total += influx
                 data['flux_end'] = influx
                 data['flux_end'] = influx
-        print(total)
 
                     
 
