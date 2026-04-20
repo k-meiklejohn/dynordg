@@ -48,7 +48,7 @@ class RiboGraph(DiGraph):
                     merged[key] = new_val
                 elif new_val is None:
                     merged[key] = existing_val
-                elif key.startswith('flux') or key == 'weight': #this may change
+                elif key.startswith('flux'): #this may change
                     merged[key] = existing_val + new_val
                 else:
                     merged[key] = new_val  # overwrite non-flux attributes
@@ -56,3 +56,23 @@ class RiboGraph(DiGraph):
         else:
             super().add_edge(u, v, **attr)
 
+    def horizontal_in_edge(self, node: RiboNode, data:bool|str|list=False):
+        if data:
+            for u, v, data in self.in_edges(node, data=data):
+                if u.phase == node.phase:
+                    return (u,v,data)
+        else:    
+            for u, v in self.in_edges(node):
+                if u.phase == node.phase:
+                    return (u,v)
+    def horizontal_out_edge(self, node: RiboNode, data:bool|str|list=False):
+
+        if data:
+            for u, v, data in self.out_edges(node, data=data):
+                if v.phase == node.phase:
+                    return (u,v, data)
+            
+        else:    
+            for u, v in self.in_edges(node):
+                if u.phase == node.phase:
+                    return (u,v)

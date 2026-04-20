@@ -69,6 +69,10 @@ class Transcript(SeqRecord):
         super().__init__(Seq(raw), *args, **kwargs)
 
         self.events= defaultdict(lambda: defaultdict(dict))
+        self.events[1]['cap'] = {'probability': 1,
+                                 'drop_probability': 0}
+        self.events[len(self.seq)]['end'] = {'probability': 0,
+                                             'drop_probability': 1}      
         if auto:
             self.auto_stop_starts()
     
@@ -137,7 +141,7 @@ class Transcript(SeqRecord):
         return new
 
 
-    def auto_stop_starts(self, cutoff=0.0):
+    def auto_stop_starts(self, cutoff=0.0, reinitiation_prob = 0.0):
         """
         Automatically adds initiation and termination events to the transcript based on sequence.
         Uses scores based on Noderer 2014 to calculate probabilities of initation.
@@ -158,12 +162,9 @@ class Transcript(SeqRecord):
                         self.add_event(i+1, 'initiation', prob)
                         
             elif codon in ['UAG', 'UGA', 'UAA']:
-                self.add_event(i+1, 'termination', 0, 1)
+                self.add_event(i+1, 'termination', reinitiation_prob, 1)
 
-        self.events[1]['cap'] = {'probability': 1,
-                                 'drop_probability': 0}
-        self.events[len(self.seq)]['end'] = {'probability': 0,
-                                             'drop_probability': 1}        
+  
 
 
 

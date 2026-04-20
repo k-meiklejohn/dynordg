@@ -59,11 +59,11 @@ class RiboEvent(tuple):
 
     def _end_transition(self):
         transitions = []
-        if self.probability > 0:
+        if self.drop_probability > 0:
             for phase in range(4):
                 transitions.append(RiboTransition(RiboNode(self.position, phase), 
                                                 RiboNode(self.position, -1), 
-                                                self.probability))
+                                                self.drop_probability))
         return transitions
 
 
@@ -112,7 +112,7 @@ class RiboEvent(tuple):
                 raise ValueError("Probabilities must be float or int")
             elif all(x == 0 for x in data[2:]):
                 raise ValueError(f'At least one probability must be non-zero')
-            if not data[1] in ('cap', 'ires'):
+            if not data[1] in ('cap', 'ires', 'termination'):
                 if sum(data[2:]) > 1:
                     raise ValueError(f"Sum of Probabilities for non-loading ('cap', 'ires') RiboEvent cannot exceed 1 or be 0, got {sum(data[2:])}")
 

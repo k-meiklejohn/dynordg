@@ -48,9 +48,9 @@ class TransitionMap(RiboGraph):
             for (u, v, w) in self.out_edges(node, data='weight'):
                 total_weight += w
 
-            if total_weight <= 0 or total_weight > 1:
-                raise ValueError(f'Total weight of edges from a single node (not from phase=-1) must be greater than 0 and less than or equal to 1\n' \
-                f'Offending Node: {node}, Weight: {total_weight}')
+            # # if total_weight <= 0 or total_weight > 1:
+            #     raise ValueError(f'Total weight of edges from a single node (not from phase=-1) must be greater than 0 and less than or equal to 1\n' \
+            #     f'Offending Node: {node}, Weight: {total_weight}')
             
     def _is_valid(self):
         self._is_valid_weight()
