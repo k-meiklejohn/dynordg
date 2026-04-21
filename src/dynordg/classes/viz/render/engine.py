@@ -496,43 +496,6 @@ class LayoutEngine:
         self._centre_events(graph, geoms, layouts)
         return LayoutResult(geoms=geoms)
 
-    # ── 4a: horizontal alignment ──────────────────────────────────────────────
-
-    # def _align_horizontal(
-    #     self,
-    #     graph:   RiboGraph,
-    #     geoms:   dict[Edge, EdgeGeom],
-    #     layouts: dict[RiboNode, NodeLayout],
-    # ) -> None:
-    #     for node in list(topological_sort(graph)):
-    #         if node.phase == -1:
-    #             continue
-    #         for slot in layouts[node].out_slots:
-    #             g = geoms[slot.edge]
-    #             if g.is_event or g.out_bot is None or g.in_bot is None:
-    #                 continue
-    #             agreed = max(g.out_bot[1], g.in_bot[1])
-    #             u, v   = slot.edge
-    #             if agreed > g.out_bot[1]:
-    #                 self._shift_node_geoms(u, agreed - g.out_bot[1], 'y',
-    #                                        geoms, layouts, graph)
-    #             if agreed > g.in_bot[1]:
-    #                 self._shift_node_geoms(v, agreed - g.in_bot[1], 'y',
-    #                                        geoms, layouts, graph)
-    #     unequal = False
-    #     for node in graph.nodes:
-    #         if node.phase == -1:
-    #             continue
-    #         for slot in layouts[node].out_slots:
-    #             g = geoms[slot.edge]
-    #             if g.is_event or g.out_bot is None or g.in_bot is None:
-    #                 continue
-    #             if g.out_bot != g.in_bot:
-    #                 unequal = True
-    #                 break
-    #     if unequal:
-    #         self._align_horizontal(graph, geoms, layouts)
-
     def _align_horizontal(
         self,
         graph:   RiboGraph,

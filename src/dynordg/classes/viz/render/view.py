@@ -275,7 +275,35 @@ class RiboRenderer:
         self.fig_size = fig_size
         self.dpi      = dpi
 
-    def render(self, layout: 'LayoutResult') -> Figure:
+    def _draw_position_labels(
+        self,
+        ax,
+        layout: LayoutResult,
+        node_x: dict,          # RiboNode → world-x float
+    ) -> None:
+        positions = layout.all_points
+        if not positions:
+            return
+        y_min = min(p[1] for p in positions)
+        label_y = y_min - 1.5          # sits just below the lowest geometry
+
+        seen_x: set[float] = set()
+        for node, wx in node_x.items():
+            if node.phase == -1:       # skip bulk/decay pseudo-nodes
+                continue
+            if wx in seen_x:           # multiple phases share an x — label once
+                continue
+            seen_x.add(wx)
+            ax.text(
+                wx, label_y,
+                str(node.position),    # nucleotide coordinate
+                ha='center', va='top',
+                fontsize=6, color='#444444',
+                clip_on=False,
+            )
+
+    def render(self, layout: LayoutResult,
+            node_x: dict | None = None) -> Figure:
         fig, ax = plt.subplots(figsize=self.fig_size, dpi=self.dpi)
         ax.set_aspect('equal')
         ax.axis('off')
@@ -286,6 +314,9 @@ class RiboRenderer:
         for prim in sorted(primitives, key=lambda p: p.zorder):
             prim.patch.set_transform(ax.transData)
             ax.add_patch(prim.patch)
+
+        if node_x is not None:
+            self._draw_position_labels(ax, layout, node_x)
 
         fig.tight_layout()
         return fig

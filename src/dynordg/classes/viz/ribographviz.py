@@ -57,7 +57,8 @@ class RiboGraphVis(RiboGraph):
 
     def compute_layout(self) -> None:
         self.layout_result = self.engine.run(self)
-        self.fig: Figure = self.renderer.render(self.layout_result)
+        node_x = self.engine._node_x_positions(self)   # same call the engine made
+        self.fig: Figure = self.renderer.render(self.layout_result, node_x=node_x)
 
     def get_figure(self) -> Figure:
         """Return the matplotlib Figure object"""
