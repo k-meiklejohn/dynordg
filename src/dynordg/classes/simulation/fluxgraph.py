@@ -88,108 +88,105 @@ class RiboGraphFlux(RiboGraph):
 
                             node.phase))
     
-    def _iterate_graph(self, node: RiboNode,
-                       flux,
-                       weight=1,
-                       retained=0,
-                       initiation_node: RiboNode|None = None,
-                       retention_node: RiboNode|None = None):
 
-        if node==self.bulk_node:
-            return
-        
-        next_node = self._downstream_node(node)
-        if next_node is None:
-            return 
-    
-        #### Calculate decay of ribosomes based on half life ####
+    def _iterate_graph(self, node: RiboNode, flux, retained=0,
+                   initiation_node: RiboNode | None = None,
+                   retention_node: RiboNode | None = None):
+        """
+        Builds the graph using an explicit stack
+        """
 
-        endflux = flux * self.edge_decay(node, next_node)
-        drop_flux = flux - endflux
-        if drop_flux != 0:
-            drop_node = RiboNode(next_node.position, -1)
-            self.add_edge(next_node, drop_node, flux_start=drop_flux, flux_end=drop_flux)
-            self.add_edge(drop_node, self.bulk_node, flux_start=drop_flux, flux_end=drop_flux)
+        stack = [(node, flux, retained, initiation_node, retention_node)]
 
-        self.add_edge(node, next_node, flux_start=flux, flux_end = endflux, weight=weight*endflux/flux, decay=drop_flux) # this is the horizontal edge
+        while stack:
+            node, flux, retained, initiation_node, retention_node = stack.pop()
 
-        ### Calculate reiniation potential of ribosomes
-  
+            if node == self.bulk_node:
+                continue
+            next_node = self._downstream_node(node)
+            if next_node is None:
+                continue
 
+            
+            
+            # ── Decay ──────────────────────────────────────────────────────────
+            endflux   = flux * self.edge_decay(node, next_node)
+            drop_flux = flux - endflux
 
-        #### calculate flux for each edge off next node ####
+            if drop_flux != 0:
+                drop_node = RiboNode(next_node.position, -1)
+                self.add_edge(next_node, drop_node, flux_start=drop_flux, flux_end=drop_flux)
+                self.add_edge(drop_node, self.bulk_node, flux_start=drop_flux, flux_end=drop_flux)
 
-        remaining_weight = 1
-        abs_endflux = endflux
-        for u, v, w in self.transitions.out_edges(next_node, data='weight'):
+            self.add_edge(node, next_node,
+                        flux_start=flux, flux_end=endflux, decay=drop_flux)
 
+            remaining_weight = 1
 
-            if self.is_retention(u,v):
-                if initiation_node != None:
-                    retention_flux = endflux * self.rein_decay(initiation_node, next_node)
-                else: 
-                    raise RuntimeError(f'Initation node not found when retaining at node: {u}')
+            # ── Pass 1: retention edges ────────────────────────────────────────
+            for u, v, w in self.transitions.out_edges(next_node, data='weight'):
+                if not self.is_retention(u, v):
+                    continue
+
+                if initiation_node is None:
+                    raise RuntimeError(
+                        f'Initiation node not found when retaining at node: {u}')
+
+                retention_flux = endflux * self.rein_decay(initiation_node, next_node)
                 if retention_flux < self.flux_cutoff:
                     continue
-                if self.retention_limit != None:
-                    if retained >= self.retention_limit:
-                        continue
+                if self.retention_limit is not None and retained >= self.retention_limit:
+                    continue
 
-                
                 new_flux = retention_flux * w
-                w = new_flux/abs_endflux
+
+                if new_flux < self.flux_cutoff:
+                    continue
                 endflux -= new_flux
-            else:
-                continue
-            if new_flux < self.flux_cutoff:
-                continue
 
-            retention_node = v
-         
-            remaining_weight -= w
 
-            #adds the edge corresponding to the events defined by the transitions from this node
-            self.add_edge(u, v, flux_start=new_flux, flux_end=new_flux) 
-            self._iterate_graph(v, new_flux, w, retained+1, retention_node=retention_node)
+                retention_node    = v
+                remaining_weight -= new_flux / flux
 
-        for u, v, w in self.transitions.out_edges(next_node, data='weight'):
-  
-            if self.is_retention(u,v):
-                continue
-            elif self.is_initiation(u,v):
-                initiation_node = v
+                self.add_edge(u, v, flux_start=new_flux, flux_end=new_flux)
+                stack.append((v, new_flux, retained + 1, initiation_node, retention_node))
+
+            # ── Pass 2: initiation / termination edges ─────────────────────────
+            for u, v, w in self.transitions.out_edges(next_node, data='weight'):
+                if self.is_retention(u, v):
+                    continue
+                
+                if self.is_initiation(u, v):
+                    initiation_node = v
+
                 if retained:
                     w *= self.ternary_complex_proportion(retention_node, next_node)
 
-            new_flux = endflux * w
-            if new_flux < self.flux_cutoff and v.phase != -1:
+                new_flux = endflux * w
+                if new_flux < self.flux_cutoff and v.phase != -1:
                     continue
-            remaining_weight -= new_flux/abs_endflux
 
-            #adds the edge corresponding to the events defined by the transitions from this node
-            self.add_edge(u, v, flux_start=new_flux, flux_end=new_flux)
+                remaining_weight -= new_flux / flux
 
+                self.add_edge(u, v, flux_start=new_flux, flux_end=new_flux)
 
-            if v.phase == -1:
-                self.add_edge(v, self.bulk_node, flux_start =new_flux, flux_end=new_flux)
-                continue
+                if v.phase == -1:
+                    self.add_edge(v, self.bulk_node, flux_start=new_flux, flux_end=new_flux)
+                    continue
 
-            self._iterate_graph(v, new_flux, w, retained=retained, initiation_node=initiation_node, retention_node=retention_node)
+                stack.append((v, new_flux, retained, initiation_node, retention_node))
 
-        #### Continue graph on same phase if weight remaining #####
-        if remaining_weight < -self.flux_error:
-            raise ValueError(f'Weight from node: {next_node} exceeds 1: {abs(remaining_weight - 1 )}')
-        
-        if remaining_weight < self.flux_error:
-            return
-        else:
-            self._iterate_graph(next_node,
-                                endflux*remaining_weight,
-                                weight=remaining_weight,
-                                retained=retained,
-                                initiation_node=initiation_node,
-                                retention_node=retention_node
-                                )
+                
+
+            # ── Continuation on same phase ─────────────────────────────────────
+            if remaining_weight < -self.flux_error:
+                raise ValueError(
+                    f'Weight from node: {next_node} exceeds 1: {abs(remaining_weight - 1)}')
+
+            if remaining_weight >= self.flux_error:
+                stack.append((next_node, endflux * remaining_weight,
+                            retained, initiation_node, retention_node))
+                
 
     def _collapse_unused_nodes(self):
         
