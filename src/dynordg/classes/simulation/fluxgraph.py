@@ -68,7 +68,7 @@ class RiboGraphFlux(RiboGraph):
                 self.add_edge(self.bulk_node, u, weight=flux, flux_start=flux, flux_end=flux)
                 self.add_edge(u, v, weight=flux, flux_start=flux, flux_end=flux )
 
-                self._iterate_graph((v), flux) 
+                self._iterate_graph(v, flux) 
                 self._normalize_flux()
 
         self._collapse_unused_nodes()
@@ -103,15 +103,19 @@ class RiboGraphFlux(RiboGraph):
 
             if node == self.bulk_node:
                 continue
+
             next_node = self._downstream_node(node)
+
             if next_node is None:
+                drop_node = RiboNode(node.position, -1)
+                self.add_edge(node, drop_node, flux_start=flux, flux_end=flux)
+                self.add_edge(drop_node, self.bulk_node, flux_start=flux, flux_end=flux)
                 continue
 
-            
-            
             # ── Decay ──────────────────────────────────────────────────────────
-            endflux   = flux * self.edge_decay(node, next_node)
-            drop_flux = flux - endflux
+            
+            drop_flux = flux * self.edge_decay(node, next_node)
+            remaining_flux = flux - drop_flux
 
             if drop_flux != 0:
                 drop_node = RiboNode(next_node.position, -1)
@@ -119,9 +123,8 @@ class RiboGraphFlux(RiboGraph):
                 self.add_edge(drop_node, self.bulk_node, flux_start=drop_flux, flux_end=drop_flux)
 
             self.add_edge(node, next_node,
-                        flux_start=flux, flux_end=endflux, decay=drop_flux)
+                        flux_start=flux, flux_end=remaining_flux, decay=drop_flux)
 
-            remaining_weight = 1
 
             # ── Pass 1: retention edges ────────────────────────────────────────
             for u, v, w in self.transitions.out_edges(next_node, data='weight'):
@@ -132,7 +135,7 @@ class RiboGraphFlux(RiboGraph):
                     raise RuntimeError(
                         f'Initiation node not found when retaining at node: {u}')
 
-                retention_flux = endflux * self.rein_decay(initiation_node, next_node)
+                retention_flux = remaining_flux * self.rein_decay(initiation_node, next_node)
                 if retention_flux < self.flux_cutoff:
                     continue
                 if self.retention_limit is not None and retained >= self.retention_limit:
@@ -142,11 +145,10 @@ class RiboGraphFlux(RiboGraph):
 
                 if new_flux < self.flux_cutoff:
                     continue
-                endflux -= new_flux
+                remaining_flux -= new_flux
 
 
                 retention_node    = v
-                remaining_weight -= new_flux / flux
 
                 self.add_edge(u, v, flux_start=new_flux, flux_end=new_flux)
                 stack.append((v, new_flux, retained + 1, initiation_node, retention_node))
@@ -156,17 +158,19 @@ class RiboGraphFlux(RiboGraph):
                 if self.is_retention(u, v):
                     continue
                 
+
                 if self.is_initiation(u, v):
+                    if retained:
+                        w *= self.ternary_complex_proportion(retention_node, next_node)
                     initiation_node = v
 
-                if retained:
-                    w *= self.ternary_complex_proportion(retention_node, next_node)
+                new_flux = remaining_flux * w
 
-                new_flux = endflux * w
                 if new_flux < self.flux_cutoff and v.phase != -1:
                     continue
 
-                remaining_weight -= new_flux / flux
+                remaining_flux -= new_flux
+
 
                 self.add_edge(u, v, flux_start=new_flux, flux_end=new_flux)
 
@@ -179,16 +183,21 @@ class RiboGraphFlux(RiboGraph):
                 
 
             # ── Continuation on same phase ─────────────────────────────────────
-            if remaining_weight < -self.flux_error:
+            if remaining_flux < -self.flux_error:
                 raise ValueError(
-                    f'Weight from node: {next_node} exceeds 1: {abs(remaining_weight - 1)}')
+                    f'Weight from node: {next_node} exceeds 1: {abs(remaining_flux - 1)}')
 
-            if remaining_weight >= self.flux_error:
-                stack.append((next_node, endflux * remaining_weight,
+            if remaining_flux >= self.flux_error:
+                stack.append((next_node, remaining_flux,
                             retained, initiation_node, retention_node))
                 
 
     def _collapse_unused_nodes(self):
+        out_flux = 0
+        for u,v, flux in self.in_edges(self.bulk_node, data='flux_end'):
+            out_flux += flux
+        print(out_flux)
+
         
         changed = True
         test_graph = deepcopy(self)
@@ -196,12 +205,13 @@ class RiboGraphFlux(RiboGraph):
     
 
         while changed:
+            changed = False
             for node in list(nx.topological_sort(test_graph)):
-                changed = False
                 if node.phase == -1:
                     continue
 
                 in_edges = self.in_edges(node)
+                #ignore nodes with  more than 1 in edge
                 if len(list(in_edges)) > 1:
                     continue
 
@@ -226,6 +236,7 @@ class RiboGraphFlux(RiboGraph):
                 
                 out_flux = self[node][out_v]['flux_start']
                 in_flux_start = self[in_u][node]['flux_start']
+                out_decay = self[node][out_v]['decay']
 
                 if abs(in_flux_end - out_flux) < self.flux_error:
 
@@ -246,15 +257,17 @@ class RiboGraphFlux(RiboGraph):
                         else:
                             if self.has_node(drop_node):
                                 self.remove_node(drop_node)
-
                     self.remove_node(node)
 
 
-                    endflux = in_flux_start * self.edge_decay(in_u, out_v)
-                    drop_flux = in_flux_start - endflux
+                    drop_flux = in_flux_start * self.edge_decay(in_u, out_v)
+                    endflux = in_flux_start - drop_flux
 
                     if drop_flux != 0:
                         drop_node = RiboNode(out_v.position, -1)
+                        print(out_v, self[out_v][drop_node])
+                        print('drop flux:', drop_flux)
+                        print('decay:', out_decay)
                         if self.has_node(drop_node) and self.in_degree(drop_node) > 1:
                             self.remove_edge(out_v, drop_node)
                         else:
@@ -265,27 +278,28 @@ class RiboGraphFlux(RiboGraph):
                         #new drop edge
                         self.add_edge(out_v, drop_node,
                             flux_start=drop_flux,
-                            flux_end=drop_flux,
-                            weight=drop_flux / in_flux_start)
+                            flux_end=drop_flux)
                         
                         #new recycling edge
-                        self.add_edge(drop_node, self.bulk_node, flux_start=drop_flux, flux_end=drop_flux, weight=1)
+                        self.add_edge(drop_node, self.bulk_node, flux_start=drop_flux, flux_end=drop_flux)
 
                     #new horizontal edge
                     self.add_edge(in_u, out_v,
                                 flux_start=in_flux_start,
                                 flux_end=endflux,
-                                weight=endflux / in_flux_start, 
-                                decay=drop_flux) # this is the horizontal edge
+                                decay=drop_flux)
                     changed = True
+
                     break
         for u, v, data in self.edges(data=True):
-            if u.phase == -1 and v == self.bulk_node:
+            if v == self.bulk_node:
                 influx = 0
                 for _, _, flux in self.in_edges(u, data='flux_end'):
                     influx += flux
+                data['flux_start'] = influx
                 data['flux_end'] = influx
-                data['flux_end'] = influx
+
+    
 
                     
 
@@ -339,14 +353,14 @@ class RiboGraphFlux(RiboGraph):
             elif u.phase == 0:
                 half_life = self.half_life_scanning
             else:
-                return 1
+                return 0
             if half_life == None:
-                return 1
+                return 0
             
-            return 0.5 ** (abs(u.position-v.position) / half_life )
+            return 1 - (0.5 ** (abs(u.position-v.position) / half_life ))
         
         else:
-            return 1
+            return 0
         
     def ternary_complex_proportion(self, u, v) -> float:
         if u.phase == 0 and v.phase == 0 and self.tc_half_life != None:
