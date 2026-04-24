@@ -32,9 +32,11 @@ class RiboEvent(tuple):
     
     def _frameshift_transition(self):
         transitions = []
+        shift_to_pos = self.position + self.shift
+        shift_to_frame = shift_to_pos % 3 + 1
         if self.probability > 0:
             transitions.append(RiboTransition(RiboNode(self.position, self.frame),
-                                               RiboNode(self.position + self.shift, 0), 
+                                               RiboNode(shift_to_pos, shift_to_frame ), 
                                                self.probability))
         if self.drop_probability > 0:
             transitions.append(self.bulk_transition(self.frame))
@@ -61,16 +63,15 @@ class RiboEvent(tuple):
         transitions = []
         if self.drop_probability > 0:
             for phase in range(4):
-                transitions.append(RiboTransition(RiboNode(self.position, phase), 
-                                                RiboNode(self.position, -1), 
-                                                self.drop_probability))
+                transitions.append(self.bulk_transition(phase))
         return transitions
 
 
     TRANSITION_MAP = {
         'initiation':  _initiation_transition,
         'termination':    _termination_transition,
-        'frameshift': _frameshift_transition,
+        'frameshift+1': _frameshift_transition,
+        'frameshift-1': _frameshift_transition,
         'ires':  _ires_transition,
         'cap': _cap_transition,
         'end': _end_transition
@@ -84,6 +85,7 @@ class RiboEvent(tuple):
     @property
     def frame(self):
         return (self.position % 3) + 1
+    
     
 
     @property

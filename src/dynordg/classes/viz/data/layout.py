@@ -19,5 +19,6 @@ class LayoutResult:
                     pts.append(pt)
             for rect in g.helper_rects:
                 pts.extend(rect)
+
         return pts
 

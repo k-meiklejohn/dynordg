@@ -89,7 +89,6 @@ class EdgePainter:
             RenderPrimitive(self._rect_patch(r), zorder=self.style.zorder)
             for r in self.geom.helper_rects
         ]
-
     # ── Decay wedge ──────────────────────────────────────────────────────────
 
     def _decay_primitives(self) -> list[RenderPrimitive]:
@@ -198,6 +197,7 @@ class EdgePainter:
             raise ValueError('rect_patch needs ≥ 3 valid points')
 
         verts = pts + [pts[0]]
+        
         codes = [Path.MOVETO] + [Path.LINETO] * (len(pts) - 1) + [Path.CLOSEPOLY]
 
         return mpatches.PathPatch(Path(verts, codes), **self._patch_kwargs(**overrides))

@@ -66,10 +66,16 @@ def _shift_geom(geom: EdgeGeom, delta: float, axis: Literal['x', 'y'],
         pt = getattr(geom, k)
         if pt is not None:
             setattr(geom, k, _shift_pt(pt, delta, axis))
-    geom.helper_rects = [
-        [_shift_pt(pt, delta, axis) for pt in rect]
-        for rect in geom.helper_rects
-    ]
+    if 'out0' in keys:
+        geom.out_helper_rects = [
+            [_shift_pt(pt, delta, axis) for pt in rect]
+            for rect in geom.out_helper_rects
+        ]
+    if 'in0' in keys:
+        geom.in_helper_rects = [
+            [_shift_pt(pt, delta, axis) for pt in rect]
+            for rect in geom.in_helper_rects
+        ]
 
 class LayoutEngine:
     """
@@ -332,7 +338,7 @@ class LayoutEngine:
             setattr(g, inout + '1', (x + x_offset + sign * f,   current_y))
             setattr(g, inout + '_quad', 2 if side == 'left' else 1)
             if x_offset:
-                self._add_helper_rect(g, x, current_y, x_offset, f)
+                self._add_helper_rect(g, x, current_y, x_offset, f, side)
             x_offset  += sign * f
             current_y += f
 
@@ -383,7 +389,7 @@ class LayoutEngine:
             setattr(g, inout + '1', (x + x_offset + sign * f,  current_y))
             setattr(g, inout + '_quad', 3 if side == 'left' else 4)
             if x_offset:
-                self._add_helper_rect(g, x, current_y, x_offset, f)
+                self._add_helper_rect(g, x, current_y, x_offset, -f, side)
             x_offset  += sign * f
             current_y -= f
 
@@ -470,10 +476,22 @@ class LayoutEngine:
 
     @staticmethod
     def _add_helper_rect(g: EdgeGeom, x: float, y: float,
-                         width: float, height: float) -> None:
-        g.helper_rects.append([
-            (x, y), (x + width, y), (x, y + height), (x + width, y + height)
-        ])
+                        width: float, height: float, side:str ) -> None:
+        if side == 'left':
+            g.in_helper_rects.append([
+                (x,         y),
+                (x + width, y),
+                (x + width, y + height),
+                (x,         y + height),
+            ])
+        elif side == 'right':
+            g.out_helper_rects.append([
+                (x,         y),
+                (x + width, y),
+                (x + width, y + height),
+                (x,         y + height),
+            ])
+
 
     # ── Phase 4: global alignment ─────────────────────────────────────────────
 

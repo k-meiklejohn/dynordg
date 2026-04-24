@@ -88,7 +88,12 @@ class EdgeGeom:
     out_bot: Pt | None = None
 
     # Helper rectangles for stacked bulk offsets
-    helper_rects: list[list[Pt]] = field(default_factory=list)
+    in_helper_rects:  list[list[Pt]] = field(default_factory=list)
+    out_helper_rects: list[list[Pt]] = field(default_factory=list)
+
+    @property
+    def helper_rects(self):
+        return self.in_helper_rects + self.out_helper_rects
 
     # Carried from EdgeSpec for renderer use
     etype:     EdgeType  = '0'

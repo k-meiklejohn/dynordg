@@ -30,7 +30,7 @@ class RiboGraphFlux(RiboGraph):
                  reinitiation_half_life = None,
                  ternary_complex_half_life = None,
                  flux_cutoff = 0.001,
-                 retention_limit = 1,
+                 retention_limit: int|None = 1,
                  **attr):
         super().__init__(incoming_graph_data, **attr)
         self.transitions = transition_map
@@ -59,12 +59,25 @@ class RiboGraphFlux(RiboGraph):
         nodes_to_remove = [node for node, degree in self.transitions.degree() if degree == 0]
 
         self.transitions.remove_nodes_from(nodes_to_remove)
+        total_weight_in = 0
+        weights = []
+        for u,v in self.transitions.edges:
+            if u.phase == -1:
+                total_weight_in += self.transitions[u][v]['weight']
+                weights.append(self.transitions[u][v]['weight'])
+        norm_weight = {}
+
+        for weight in weights:
+            norm_weight[weight] = weight/total_weight_in
+
+            
+                
         
         for u, v in self.transitions.edges:
 
             if u.phase == -1:
                 self.add_edge(self.bulk_node, u)
-                flux = flux=self.transitions[u][v]['weight']
+                flux = norm_weight[self.transitions[u][v]['weight']]
                 self.add_edge(self.bulk_node, u, weight=flux, flux_start=flux, flux_end=flux)
                 self.add_edge(u, v, weight=flux, flux_start=flux, flux_end=flux )
 
@@ -193,12 +206,6 @@ class RiboGraphFlux(RiboGraph):
                 
 
     def _collapse_unused_nodes(self):
-        out_flux = 0
-        for u,v, flux in self.in_edges(self.bulk_node, data='flux_end'):
-            out_flux += flux
-        print(out_flux)
-
-        
         changed = True
         test_graph = deepcopy(self)
         test_graph.remove_node(self.bulk_node)
@@ -230,33 +237,18 @@ class RiboGraphFlux(RiboGraph):
 
                 if not in_u or not out_v:
                     continue
-
+                
+                
+                
 
                 in_flux_end = self[in_u][node]['flux_end']
                 
                 out_flux = self[node][out_v]['flux_start']
                 in_flux_start = self[in_u][node]['flux_start']
-                out_decay = self[node][out_v]['decay']
+                out_decay = self[node][out_v]['flux_start'] - self[node][out_v]['flux_end']
 
                 if abs(in_flux_end - out_flux) < self.flux_error:
 
-                    drop_node = RiboNode(node.position, -1)
-
-                    if node.phase == 0 and self.half_life_scanning:
-                        
-                        if self.has_node(drop_node) and self.in_degree(drop_node) > 1:
-                            self.remove_edge(node, drop_node)
-
-                        else:
-                            if self.has_node(drop_node):
-                                self.remove_node(drop_node)
-
-                    elif node.phase > 0 and self.half_life_translation:
-                        if self.has_node(drop_node) and self.in_degree(drop_node) > 1:
-                            self.remove_edge(node, drop_node)
-                        else:
-                            if self.has_node(drop_node):
-                                self.remove_node(drop_node)
                     self.remove_node(node)
 
 
@@ -265,15 +257,15 @@ class RiboGraphFlux(RiboGraph):
 
                     if drop_flux != 0:
                         drop_node = RiboNode(out_v.position, -1)
-                        print(out_v, self[out_v][drop_node])
-                        print('drop flux:', drop_flux)
-                        print('decay:', out_decay)
-                        if self.has_node(drop_node) and self.in_degree(drop_node) > 1:
+                        out_drop_flux = self[out_v][drop_node]['flux_start']
+                        non_decay_drop = out_drop_flux - out_decay
+                        non_decay_drop = non_decay_drop if non_decay_drop > self.flux_error else 0
+
+                        drop_flux += non_decay_drop
+
+                        if self.has_edge(out_v, drop_node):
                             self.remove_edge(out_v, drop_node)
-                        else:
-                            if self.has_node(drop_node):
-                                if  self.out_degree(out_v) > 1:
-                                    self.remove_node(drop_node)
+
 
                         #new drop edge
                         self.add_edge(out_v, drop_node,
@@ -291,6 +283,8 @@ class RiboGraphFlux(RiboGraph):
                     changed = True
 
                     break
+        
+        parentless_nodes = []
         for u, v, data in self.edges(data=True):
             if v == self.bulk_node:
                 influx = 0
@@ -298,6 +292,10 @@ class RiboGraphFlux(RiboGraph):
                     influx += flux
                 data['flux_start'] = influx
                 data['flux_end'] = influx
+            if self.in_degree(u) < 1:
+                parentless_nodes.append(u)
+        self.remove_nodes_from(parentless_nodes)
+                
 
     
 
