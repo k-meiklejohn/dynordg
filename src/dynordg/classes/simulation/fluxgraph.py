@@ -12,7 +12,7 @@ class RiboGraphFlux(RiboGraph):
     RiboGraphFlux models the movement of ribosomes along an mRNA transcript by propagating
     flux from a bulk cytoplasmic pool through a network of ribosomal phase-space nodes.
     Each edge carries flux values that account for initiation, elongation, termination,
-    reinitiation, decay during scanning and translation, and ternary complex availability.
+    reinitiation, and decay during scanning and translation.
 
     The graph is constructed automatically on instantiation via construct(), which:
       - Removes edges below the weight cutoff from the transition map

@@ -9,7 +9,7 @@ ribo_graph_vis.py for the rendering layer.
 from __future__ import annotations
 from ..graph import RiboGraph
 from ..simulation import RiboGraphFlux
-from .data import LayoutResult, Pt
+from .data import Pt
 from .render import LayoutEngine, RiboRenderer
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
