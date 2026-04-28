@@ -1,14 +1,14 @@
 """
-ribo_graph_vis.py  –  Refactored visualisation layer for RiboGraphFlux.
+ribo_graph_vis.py  –  Visualisation layer for RiboGraphFlux.
 
 Architecture
 ------------
-RiboGraphVis          – layout engine  (unchanged public API)
-  └─ RiboRenderer     – stateless factory that turns layout data → patches
-       └─ EdgePainter – per-edge patch builder (rect / taper / decay)
+RiboRenderer          – stateless factory: LayoutResult → Figure
+  └─ EdgePainter      – per-edge patch builder (body / taper / decay / arrow)
 
-Changing the look of any edge type now only requires editing EdgePainter or
-the COLOR_DICT / STYLE_DICT on RiboRenderer.  The layout maths is untouched.
+To change how any edge type looks, edit EdgePainter or override
+COLOR_DICT / STYLE_OVERRIDES / edge_style() on RiboRenderer.
+The layout mathematics (LayoutEngine) is entirely separate.
 """
 
 from __future__ import annotations
@@ -46,10 +46,29 @@ class RenderPrimitive:
 
 class EdgePainter:
     """
-    Converts the pre-computed layout data for a single edge into a list of
-    RenderPrimitive objects.
+    Converts the pre-computed geometry for a single edge into renderable patches.
 
-    This is the *only* class you need to touch to change how edges look.
+    Instantiate with an EdgeGeom and an EdgeStyle, then call primitives() to
+    get the complete list of RenderPrimitives for that edge.  Each primitive
+    maps to one PathPatch on the axes.
+
+    This is the only class that needs to change to alter edge appearance.
+
+    Patch types produced
+    --------------------
+    Body rect       The main flux band quadrilateral (in0/in1 → out0/out1).
+    Helper rects    Auxiliary fill rectangles for stacked bulk-edge offsets.
+    Decay wedge     Triangle marking flux lost to ribosome drop-off along a
+                    scanning or translation edge (purple, zorder - 1).
+    Curved tapers   Bézier caps at the node faces of event edges (initiation,
+                    40s_retention, shift), smoothing the band entry/exit.
+    Bulk arrow      Isoceles triangle arrowhead at the free end of load/drop
+                    edges pointing toward (load) or away from (drop) the mRNA.
+
+    Class attributes
+    ----------------
+    TAPER_DEPTH_SCALE : float
+        Controls the x-extent of the Bézier taper cap relative to flux width.
     """
 
     TAPER_DEPTH_SCALE: float = 0.4
@@ -62,7 +81,8 @@ class EdgePainter:
     # ── Public entry point ───────────────────────────────────────────────────
 
     def primitives(self) -> list[RenderPrimitive]:
-        """Return all patches needed to draw this edge."""
+        """Return all patches needed to draw this edge, in paint order."""
+        
         out: list[RenderPrimitive] = []
 
         out.extend(self._body_primitives())
@@ -76,6 +96,7 @@ class EdgePainter:
     # ── Body rect ────────────────────────────────────────────────────────────
 
     def _body_primitives(self) -> list[RenderPrimitive]:
+        """Main flux band as a filled quadrilateral (in0/in1/out0/out1)."""
         g = self.geom
         corners = [g.in0, g.in1, g.out0, g.out1]
         
@@ -85,6 +106,7 @@ class EdgePainter:
     # ── Helper rects (stacked bulk offsets) ──────────────────────────────────
 
     def _helper_rect_primitives(self) -> list[RenderPrimitive]:
+        """Fill rectangles covering x-offset gaps behind stacked bulk edges."""
         return [
             RenderPrimitive(self._rect_patch(r), zorder=self.style.zorder)
             for r in self.geom.helper_rects
@@ -92,6 +114,12 @@ class EdgePainter:
     # ── Decay wedge ──────────────────────────────────────────────────────────
 
     def _decay_primitives(self) -> list[RenderPrimitive]:
+        """
+        Triangular wedge (decay0/decay1/decay2) representing flux lost to
+        ribosome drop-off.  Drawn in purple at zorder - 1 so it sits behind
+        the main band.  Returns nothing when all three vertices are unset or
+        when decay1 == decay2 (zero decay).
+        """
         g = self.geom
 
         if g.decay0 is None or g.decay1 is None or g.decay2 is None:
@@ -110,6 +138,14 @@ class EdgePainter:
     # ── Curved tapers (event edges only) ─────────────────────────────────────
 
     def _taper_primitives(self) -> list[RenderPrimitive]:
+        """
+        Bézier taper caps for event edges (is_event == True).
+
+        One cap is drawn at the source node face (out0, out_quad) and one at
+        the target node face (in0, in_quad), provided the respective node is
+        not a bulk node.  Caps are rendered at zorder + 1 to sit on top of
+        the body rect.  Returns nothing for non-event (horizontal) edges.
+        """
         g = self.geom
 
         if not g.is_event:
@@ -143,15 +179,15 @@ class EdgePainter:
  
     def _bulk_arrow_primitives(self) -> list[RenderPrimitive]:
         """
-        Arrowhead at the free end of a load or drop edge.
- 
-          load  (u.phase == -1):  arrow points inward  → tip at in0/in1 midpoint,
-                                  pointing in the +x direction
-          drop  (v.phase == -1):  arrow points outward → tip at out0/out1 midpoint,
-                                  pointing in the -x direction
- 
-        The arrowhead is an isoceles triangle whose height equals the flux
-        width and whose base is ARROW_DEPTH_SCALE * flux deep.
+        Arrowhead at the free (bulk) end of a load or drop edge.
+
+        Load edge (u.phase == -1): triangle points toward the mRNA, with its
+        tip between out0 and out1 and its base extending outward.
+
+        Drop edge (v.phase == -1): triangle points away from the mRNA, with
+        its tip at in_extent and its base at in_left_base/in_right_base.
+
+        Returns nothing for edges that connect two non-bulk nodes.
         """
         g = self.geom
 
@@ -209,7 +245,15 @@ class EdgePainter:
         quad: int,
         inout: str,
     ) -> mpatches.PathPatch:
-        """Curved tapered cap for event-edge endpoints."""
+        """
+        Single Bézier taper cap anchored at *centre*.
+
+        The cap is a CURVE3 quadratic Bézier that rounds the corner where a
+        diagonal event edge meets a node face.  *quad* (1–4) encodes which
+        quadrant the band approaches from, controlling the x/y sign of the
+        control point offset.  *inout* selects whether the cap faces the
+        incoming or outgoing side.
+        """
         x, y   = centre
         x_sign = -1 if quad in (1, 4) else 1
         y_sign =  1 if quad in (1, 2) else -1
@@ -242,10 +286,35 @@ class EdgePainter:
 
 class RiboRenderer:
     """
-    Stateless renderer.  Call ``render(graph)`` to get a Figure.
+    Stateless renderer: converts a LayoutResult into a matplotlib Figure.
 
-    Customise visuals by subclassing and overriding COLOR_DICT / STYLE_DICT,
-    or by replacing ``edge_style()`` entirely.
+    Usage
+    -----
+    >>> renderer = RiboRenderer()
+    >>> fig = renderer.render(layout, node_x=node_x_dict)
+
+    Customisation
+    -------------
+    Override COLOR_DICT to change per-type colours.  Override STYLE_OVERRIDES
+    to merge additional EdgeStyle kwargs (alpha, linewidth, zorder) on top of
+    the colour for specific edge types.  For full control, override edge_style()
+    to replace style resolution entirely.  To change patch shapes or geometry,
+    subclass EdgePainter and override _collect_primitives() to use it.
+
+    Class attributes
+    ----------------
+    COLOR_DICT : dict[str, str]
+        Maps EdgeType strings to matplotlib colour strings.
+    STYLE_OVERRIDES : dict[str, dict]
+        Optional per-type keyword overrides merged into EdgeStyle on top of
+        the colour from COLOR_DICT.  Empty by default.
+
+    Parameters
+    ----------
+    fig_size : tuple of float
+        Matplotlib figure size in inches (width, height). Default (12, 6).
+    dpi : int
+        Figure resolution. Default 150.
     """
 
     # ── Colour palette ───────────────────────────────────────────────────────

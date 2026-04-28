@@ -1,9 +1,9 @@
 class RiboNode(tuple):
     """
-    Special 2-tuple that refers to a position in Ribosomal phase space, the first integer \
+    Special 2-tuple that refers to a position in simplified Ribosomal phase space, the first integer \
     refers to the nucleotide position on a transcript, while the second refers to the phase \
-    of the ribosome: -1 for not associated, 0 for scanning and 1,2,3 for translating in the phase \
-    where phase (frame) = position % 3 + 1
+    of the ribosome: -1 for not associated, 0 for scanning and 1,2,3 for translating in the frame \
+    where frame = position % 3 + 1
     
     """
     def __new__(cls, *args):
@@ -29,10 +29,16 @@ class RiboNode(tuple):
 
     @property
     def position(self) -> int:
+        """
+        Nucleotide position of the node
+        """
         return self[0]
 
     @property
     def phase(self) -> int:
+        """
+        Simplified phase of the node -1 is not reading, 0 is scanning, 1, 2, 3 are translating in one of those frames
+        """
         return self[1]
 
     def __repr__(self):

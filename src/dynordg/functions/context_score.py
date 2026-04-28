@@ -2,7 +2,8 @@ from ..data import AUG_SCORE, NON_AUG_SCORE
 
 def start_score(sequence: str, aug: bool):
     """
-    Calculate the probabiltily of initation of a start site. If aug is True, 
+    Calculate the probabiltily of initation of a start site. if aug is True, 
+    must give a sequence of length 11, else length 8. Sequence must only contain A,U,G or C 
     """
 
     if len(sequence) != 11 and aug:

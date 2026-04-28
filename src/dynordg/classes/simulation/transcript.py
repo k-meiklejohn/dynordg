@@ -29,7 +29,7 @@ class Transcript(SeqRecord):
     An RNA transcript record that holds information about RiboEvents.
 
     Inherits all BioPython SeqRecord functionality (reading/writing FASTA,
-    GenBank, feature annotation, slicing, …) and adds RNA-specific helpers.
+    GenBank, feature annotation, slicing, …) and adds dynamic RDG specific helpers.
 
     Parameters
     ----------
@@ -89,8 +89,7 @@ class Transcript(SeqRecord):
             raise ValueError('')
         self.events[pos][type] = {'probability': prob, 'drop_probability': drop_prob}
     
-    @property
-    def transition_map(self) -> TransitionMap:
+    def transition_map(self, weight_cutoff = 0.0) -> TransitionMap:
         
         """
         Returns a TransitionMap instance based on the events stored on the transcript
@@ -102,12 +101,13 @@ class Transcript(SeqRecord):
             for event in self.events[pos]:
                 prob = self.events[pos][event]['probability'] if 'probability' in self.events[pos][event] else 0
                 drop_prob = self.events[pos][event]['drop_probability'] if 'drop_probability' in self.events[pos][event] else 0
-                list_of_events.append(RiboEvent(pos,
-                                                event,
-                                                prob,
-                                                drop_prob))
+                if prob + drop_prob > weight_cutoff:
+                    list_of_events.append(RiboEvent(pos,
+                                                    event,
+                                                    prob,
+                                                    drop_prob))
         for event in list_of_events:
-            list_of_transitions.extend(event._to_transition())
+            list_of_transitions.extend(event.to_transition())
         tmap = TransitionMap()
         tmap.add_weighted_edges_from(list_of_transitions)
         return tmap

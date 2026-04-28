@@ -11,7 +11,10 @@ class RiboGraph(DiGraph):
         self.bulk_node = RiboNode((-1,-1))
         self.add_node(self.bulk_node)
 
-    def add_node(self, node_for_adding, **attr):
+    def add_node(self, node_for_adding: RiboNode, **attr):
+        """
+        Add a new RiboNode to the graph
+        """
         if isinstance(node_for_adding, RiboNode):
             pass
         elif isinstance(node_for_adding, tuple):
@@ -22,6 +25,9 @@ class RiboGraph(DiGraph):
     
     
     def add_nodes_from(self, nodes_for_adding, **attr):
+        """
+        Add multiple RiboNodes to a graph
+        """
         for node in nodes_for_adding:
             n = node[0] if isinstance(node, tuple) else node
             if not isinstance(n, RiboNode):
@@ -33,6 +39,9 @@ class RiboGraph(DiGraph):
     
     
     def add_edge(self, u, v, **attr):
+        """
+        Add an edge consisting of 2 RiboNodes to a graph
+        """
         if not isinstance(u, RiboNode):
             u = RiboNode(u)
         if not isinstance(v, RiboNode):
@@ -57,6 +66,9 @@ class RiboGraph(DiGraph):
             super().add_edge(u, v, **attr)
 
     def horizontal_in_edge(self, node: RiboNode, data:bool|str|list=False):
+        """
+        Returns the in edge in the same phase as the node
+        """
         if data:
             for u, v, data in self.in_edges(node, data=data):
                 if u.phase == node.phase:
@@ -66,6 +78,9 @@ class RiboGraph(DiGraph):
                 if u.phase == node.phase:
                     return (u,v)
     def horizontal_out_edge(self, node: RiboNode, data:bool|str|list=False):
+        """
+        Returns the out edge in the same phase as the node
+        """
 
         if data:
             for u, v, data in self.out_edges(node, data=data):

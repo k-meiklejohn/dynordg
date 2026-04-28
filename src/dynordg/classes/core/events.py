@@ -5,7 +5,8 @@ import re
 class RiboEvent(tuple):
     """
     Tuple in the form position:int, type: str, probability: float, drop_probability: float
-    Probabilities must be 0 <= p <= 1 and must not add to be greater than 1
+    Probabilities must be 0 <= p <= 1 and must not add to be greater than 1 (except termination which \
+    may have a probability (of reinitiation) and a drop_probability).
     """
 
 
@@ -84,12 +85,18 @@ class RiboEvent(tuple):
 
     @property
     def frame(self):
+        """
+        Provides the frame (1,2,3) of the event
+        """
         return (self.position % 3) + 1
     
     
 
     @property
     def shift(self):
+        """
+        If event is a frameshift type, this gives the direction and magnitude of the frameshift
+        """
         match = re.search(r'shift([+-]?\d+)', self.type)
         return int(match.group(1)) if match else 0
 
@@ -130,7 +137,7 @@ class RiboEvent(tuple):
     def __repr__(self):
         return f"(Pos:{self.position}, type:{self.type}, prob:{self.probability}, drop:{self.drop_probability})"
     
-    def _to_transition(self) -> list[RiboTransition]:
+    def to_transition(self) -> list[RiboTransition]:
         """
         Returns a list of RiboTransitions coresponding to the event
         """

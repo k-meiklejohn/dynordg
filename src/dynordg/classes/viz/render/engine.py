@@ -31,10 +31,15 @@ _OUT_EDGE_ORDER: dict[tuple, int] = {
 }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Edge-order lookup tables
-# ─────────────────────────────────────────────────────────────────────────────
+"""
+_IN_EDGE_ORDER and _OUT_EDGE_ORDER define the vertical stacking priority of
+edges on each face of a node.  Lower integers sit closer to the bottom of
+the node face.  Slot 4 is reserved for horizontal (direction == 0) edges.
 
+Keys are (etype, direction) or (etype, direction, shift_n) for 'shift' edges.
+Any combination not present in the table is rejected by _sort_key() with an
+assertion error.
+"""
 
 
 
@@ -79,10 +84,88 @@ def _shift_geom(geom: EdgeGeom, delta: float, axis: Literal['x', 'y'],
 
 class LayoutEngine:
     """
-    Stateless layout engine.  Feed it a graph, get back a LayoutResult.
+    Converts a RiboGraph flux graph into a renderer-ready LayoutResult.
 
-    Each phase method is independently unit-testable and can be overridden
-    in a subclass to change layout behaviour without touching other phases.
+    The engine runs four sequential phases, each with a single well-defined
+    responsibility.  All phase methods are pure with respect to the graph —
+    they return new data structures rather than mutating the graph — and can
+    be overridden individually in a subclass.
+
+    Pipeline
+    --------
+    Pre-pass  _node_x_positions
+        Map each node's nucleotide position to a world x coordinate,
+        optionally compressing large inter-node gaps with a log scale.
+
+    Phase 1   classify_edges  →  dict[Edge, EdgeSpec]
+        Label every edge with its semantic type (load, drop, initiation,
+        40s_retention, shift, or phase-lane continuation), travel direction,
+        and codon displacement.  Bulk edge directions are resolved in a
+        second sub-pass once all non-bulk edges are classified.
+
+    Phase 2   order_nodes  →  dict[RiboNode, NodeLayout]
+        Sort each node's incoming and outgoing edges into an ordered slot
+        list using the priority tables _IN_EDGE_ORDER / _OUT_EDGE_ORDER.
+        The slot order determines vertical stacking on the node face.
+        No coordinates are assigned here.
+
+    Phase 3   compute_geometries  →  dict[Edge, EdgeGeom]
+        Assign in0/in1/out0/out1 corners to every edge band in local-y
+        space (x is already world x; y is relative to each node's own
+        vertical origin).  Also computes decay triangles, bulk arrowheads,
+        and helper rectangles for stacked bulk offsets.
+
+    Phase 4   align_layout  →  LayoutResult
+        Three sequential global passes convert local-y to absolute world
+        coordinates:
+
+        4a  _align_horizontal
+            Walk nodes in topological order, shifting each node upward until
+            the out_bot anchor of every outgoing horizontal edge agrees with
+            the in_bot anchor of the same edge at its target node.  Repeated
+            until convergence (or a maximum-pass safety limit).
+
+        4b  _stack_phases
+            Shift each phase lane (0, 1, 2, 3) upward so that the lanes do
+            not overlap, separated by a configurable buffer.
+
+        4c  _centre_events
+            For non-shift event edges (initiation, 40s_retention), split the
+            x gap between source and target nodes equally so the edge is
+            centred between its two node faces.
+
+    Parameters
+    ----------
+    log_scale : float
+        Base for the logarithmic x-axis compression applied to gaps between
+        node positions.  A value ≤ 1 disables compression and uses raw
+        nucleotide positions directly.  Values > 1 reduce the visual impact
+        of long inter-node gaps (e.g. log_scale=10 compresses a 1000 nt gap
+        to log₁₀(1000)+1 = 4 display units).
+
+    Methods
+    -------
+    run(graph)
+        Execute the full pipeline and return a LayoutResult.
+    classify_edges(graph)
+        Phase 1 only — useful for unit testing edge classification in isolation.
+    order_nodes(graph, specs)
+        Phase 2 only.
+    compute_geometries(graph, specs, layouts, node_x)
+        Phase 3 only.
+    align_layout(graph, geoms, layouts, node_x)
+        Phase 4 only — returns a LayoutResult.
+
+    Notes
+    -----
+    - Coordinate conventions: x increases 5'→3' along the mRNA; y increases
+      upward; phase lanes are stacked bottom (phase 0) to top (phase 3).
+    - The _OWNED class variable maps (is_event, side) pairs to the point
+      attributes that belong to that node face, ensuring that _shift_node_geoms
+      never moves a coordinate owned by the opposite end of an edge.
+    - Phase 4a issues a UserWarning if it fails to converge within
+      (4 * node_count + 10) passes; the resulting layout is approximate but
+      still renderable.
     """
 
     def __init__(self, log_scale: float = 1):
@@ -168,9 +251,17 @@ class LayoutEngine:
             shift_n=shift_n, is_event=True,
         )
 
-    def _resolve_bulk_directions(self, graph: RiboGraph,
-                                  specs: dict[Edge, EdgeSpec]) -> None:
-        """Fill in direction=None on load/drop EdgeSpecs."""
+    def _resolve_bulk_directions(self, graph, specs):
+        """
+        Fill in direction=None on load/drop EdgeSpecs.
+
+        Bulk edge direction is chosen to oppose the net direction of the
+        non-bulk edges at the same node: if most traffic goes up  (+1),
+        the load arrow points right (-1) so it does not cross
+        the main stream.  Called at the end of classify_edges once all
+        non-bulk specs are populated.
+        """
+
         for node in graph.nodes:
             if node.phase == -1:
                 continue
@@ -301,6 +392,7 @@ class LayoutEngine:
         return geoms
 
     def _fill_side(
+
         self,
         node:     RiboNode,
         nl:       NodeLayout,
@@ -311,6 +403,17 @@ class LayoutEngine:
         side:     Literal['left', 'right'],
         flux_key: Literal['flux_start', 'flux_end'],
     ) -> None:
+
+        """
+        Assign coordinates to all edges on one face (left=in / right=out)
+        of *node* in local-y space.
+
+        Edges are processed in three passes — bottom diagonals, horizontal,
+        top diagonals — matching the slot ordering from Phase 2.  Helper
+        rectangles are appended for any diagonal edge that has an x offset
+        (i.e. sits behind another diagonal at the same face).
+        """
+
         sign     = -1 if side == 'left' else 1
         inout    = 'in' if side == 'left' else 'out'
         bottom_d = -1   if side == 'right' else 1
@@ -401,6 +504,15 @@ class LayoutEngine:
         node_x:             dict[RiboNode, float],
         bulk_length_factor: float,
     ) -> None:
+        
+        """
+        Add arrowhead geometry (extent and base points) to load and drop edges.
+
+        Arrow length scales with flux_start * bulk_length_factor, with a
+        minimum of 0.2 display units to keep zero-flux arrows visible.
+        Arrow depth scales with flux via ARROW_DEPTH_SCALE.
+        """
+
         DELTA_SIGN = {
             (-1, 'load'): +1, (-1, 'drop'): -1,
             (+1, 'load'): -1, (+1, 'drop'): +1,
@@ -450,16 +562,16 @@ class LayoutEngine:
     ) -> None:
         """
         Set decay0 on every horizontal (non-event) edge.
- 
+
         decay0 is the y-anchor where the decay wedge meets the horizontal
-        stream at the *source* node.  Its position depends on the
-        downstream node's drop_direction, which is only known after Phase 2
-        (order_nodes) has run for every node.
- 
-        Rule (matching original logic):
+        stream at the source node.  Its position depends on the downstream
+        node's drop_direction, which is only known after Phase 2 has run
+        for every node, so this is a deferred second pass within Phase 3.
+
+        Rule:
           drop_direction == -1  →  decay0 = out0  (bottom of stream)
           drop_direction == +1  →  decay0 = out1  (top of stream)
-          no drop at v          →  decay0 not set (no wedge needed)
+          no drop at v          →  decay0 left unset
         """
         for (u, v), g in geoms.items():
             if g.is_event:
@@ -669,7 +781,15 @@ class LayoutEngine:
         layouts: dict[RiboNode, NodeLayout],
         graph:   RiboGraph,
     ) -> None:
-        """Shift all geom coordinates *owned* by node."""
+        """
+        Shift all geometry coordinates *owned by node* by delta along axis.
+
+        Ownership is defined by _OWNED: each (is_event, side) pair maps to
+        the specific point attributes that belong to that node face.  This
+        ensures that shifting node A never moves the far-end coordinates of
+        an edge that are owned by node B.  Bulk edge endpoints anchored at
+        this node are handled separately because bulk nodes have no NodeLayout.
+        """
         for edges, side in (
             (graph.out_edges(node), 'out'),
             (graph.in_edges(node),  'in'),

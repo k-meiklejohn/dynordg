@@ -1,27 +1,112 @@
 from ..graph import RiboGraph
 from .transitionmap import TransitionMap
-from ..core import RiboNode, RiboPath
+from ..core import RiboNode
 import networkx as nx
 import warnings
 from copy import deepcopy
 
 class RiboGraphFlux(RiboGraph):
-
     """
-    A RiboGraph that contains information about the available paths of a ribosome \
-    aswell as the flux along each path. It is calculated from a TransitionMap, \
-    using the from_transition_map() or upon initialisation by massing a TransitionMap instance. 
-    Attributes:
-    ribopaths: returns a list of lists where each inner list is the path of a 40S subunit through \
-    ribosomal phase space where the 40S maintains continuous association with the mRNA
+    A directed graph representing ribosomal flux through phase space, built from a TransitionMap.
 
-    translons: returns a list of lists where each each inner list is the path of a ribosome through ribosomal phase space \
-    where the 60S maintains continuos association with the mRNA.
+    RiboGraphFlux models the movement of ribosomes along an mRNA transcript by propagating
+    flux from a bulk cytoplasmic pool through a network of ribosomal phase-space nodes.
+    Each edge carries flux values that account for initiation, elongation, termination,
+    reinitiation, decay during scanning and translation, and ternary complex availability.
 
-    Methods:
-    flux_proportion(path): returns a float representing the proportion of flux owned by a path. 
+    The graph is constructed automatically on instantiation via construct(), which:
+      - Removes edges below the weight cutoff from the transition map
+      - Normalises entry flux across all initiation sites
+      - Propagates flux iteratively through the graph, applying decay and branching
+      - Collapses redundant intermediate nodes
 
+    Parameters
+    ----------
+    transition_map : TransitionMap
+        The transition map from which the flux graph is built. Encodes the probability
+        of moving between ribosomal phase-space nodes.
+    half_life_scanning : float or None
+        The half-life (in nucleotides) of a scanning 40S subunit. Controls the rate of
+        decay applied to flux along scanning edges (phase == 0). If None, no scanning
+        decay is applied.
+    half_life_translation : float or None
+        The half-life (in nucleotides) of an elongating ribosome. Controls
+        decay along translation edges (phase > 0). If None, no translational decay is applied.
+    weight_cutoff : float
+        Edges in the transition map with weight below this value are removed before
+        flux propagation. Default is 0.0.
+    reinitiation_half_life : float or None
+        Controls the decay of reinitiation potential as a function of distance from the
+        initiation node. Larger values allow reinitiation over greater distances.
+        If None, reinitiation potential does not decay.
+    ternary_complex_half_life : float or None
+        Half-life governing the replenishment of ternary complex during scanning after
+        a termination event. Used to scale initiation probability following reinitiation.
+        If None, ternary complex is assumed to be fully available at all times.
+    flux_cutoff : float
+        Flux values below this threshold are not propagated further, pruning negligible
+        branches from the graph. Default is 0.001.
+    retention_limit : int or None
+        Maximum number of consecutive retention events (ribosome returning to a scanning state on the same
+        mRNA after termination) allowed per path. If None, retention is unlimited.
+        Default is 1.
+
+    Attributes
+    ----------
+    transitions : TransitionMap
+        The underlying transition map used to build the graph.
+    ribopaths : list of list of tuple
+        All paths representing continuous 40S association with the mRNA, from the
+        first loading node to the bulk node. Each path is a list of edge tuples (u, v).
+    translons : list of list of tuple
+        All sub-paths within ribopaths representing continuous 60S association
+        (i.e., active translation). Each translon is a list of edge tuples (u, v)
+        where both nodes have phase > 0.
+
+    Edge Data
+    ---------
+    Each edge (u, v) in the graph carries the following data:
+      flux_start : float
+          Flux entering the edge at node u.
+      flux_end : float
+          Flux remaining at node v after decay along the edge.
+      decay : float
+          Flux lost along the edge due to ribosome drop-off.
+
+
+    Methods
+    -------
+    flux_proportion(u, v) -> float
+        Returns the total proportion of bulk flux that travels between nodes u and v,
+        summed across all simple paths connecting them.
+    flux_proportion_path(path) -> float
+        Returns the proportion of bulk flux that travels along a specific path,
+        given as an ordered list of RiboNodes.
+    edge_weight(u, v) -> float
+        Returns the fraction of flux leaving node u that is carried by the edge to v.
+    edge_decay(u, v) -> float
+        Returns the fraction of flux lost to ribosome drop-off along the edge from u to v.
+    rein_decay(u, v) -> float
+        Returns the decay factor applied to reinitiation potential between nodes u and v.
+    ternary_complex_proportion(u, v) -> float
+        Returns the fraction of ternary complex available at v, given prior scanning from u.
+    add_transition(source, target, probability)
+        Adds a single transition to the underlying map and reconstructs the flux graph.
+    add_transitions_from(tbunch)
+        Adds multiple transitions from an iterable of (source, target, weight) tuples
+        and reconstructs the flux graph.
+
+    Notes
+    -----
+    - Node phase conventions: phase == -1 represents the bulk cytoplasmic pool (off-mRNA),
+      phase == 0 represents a scanning 40S subunit, and phase > 0 represents an elongating
+      80S ribosome.
+    - Flux is normalised so that the maximum edge flux equals 1.0.
+    - Floating-point accumulation errors in complex graphs may cause small discrepancies
+      between total inbound and outbound flux; a warning is raised if this exceeds the
+      internal tolerance (flux_error = 1e-15).
     """
+
     def __init__(self, transition_map: TransitionMap, 
                  incoming_graph_data=None, 
                  half_life_scanning: float|None = None, 
@@ -81,7 +166,7 @@ class RiboGraphFlux(RiboGraph):
                 self.add_edge(self.bulk_node, u, weight=flux, flux_start=flux, flux_end=flux)
                 self.add_edge(u, v, weight=flux, flux_start=flux, flux_end=flux )
 
-                self._iterate_graph(v, flux) 
+                self._iterate_graph(v, flux, initiation_node=v) 
                 self._normalize_flux()
 
         self._collapse_unused_nodes()
@@ -145,8 +230,7 @@ class RiboGraphFlux(RiboGraph):
                     continue
 
                 if initiation_node is None:
-                    raise RuntimeError(
-                        f'Initiation node not found when retaining at node: {u}')
+                    continue
 
                 retention_flux = remaining_flux * self.rein_decay(initiation_node, next_node)
                 if retention_flux < self.flux_cutoff:
@@ -405,7 +489,7 @@ class RiboGraphFlux(RiboGraph):
         paths = []
         for loading in self.successors(self.bulk_node):
             for path in nx.all_simple_edge_paths(self, loading, self.bulk_node):
-                paths.append(RiboPath(path))
+                paths.append(path)
         return paths
     
     @property
@@ -488,6 +572,8 @@ class RiboGraphFlux(RiboGraph):
             total_flux += flux
 
         return self[u][v]['flux_start'] / total_flux
+
+
 
     
     

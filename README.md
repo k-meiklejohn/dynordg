@@ -19,15 +19,13 @@ This package provides tools to:
 ## Installation
 
 ```bash
-git clone https://github.com/k-meiklejohn/dynordg.git
-cd dynordg
-pip install -e .
+pip install dynordg
 ```
 
 ## Quick Start
 
 ```python
-from dynordg import Transcript, RiboGraphFlux
+from dynordg import Transcript, RiboGraphFlux, RiboGraphVis
 
 # Create transcript
 t = Transcript("AUGGCCAUGGCGCCCAGAACUGGGUAA")
@@ -45,25 +43,12 @@ plot = RiboGraphVis(graph)
 graph.show()
 ```
 
-## API Reference
-
-### Transcript
-
-Represents an mRNA transcript.
-
-**Input**
-- `sequence` (str): nucleotide sequence (T → U automatically)
-
-**Attributes**
-- `events`: nested dictionary of transcript events
-- `transition_map`: generated TransitionMap
-
-**Methods**
-- `auto_stop_starts()`: detects start/stop codons and assigns probabilities
-
 ## Example Output
 
 Below is example dynamic RDG (if not a realistic one):
 
 ![Example RDG](docs/example.png)
+
+
+
 
