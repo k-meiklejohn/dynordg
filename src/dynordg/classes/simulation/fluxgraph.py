@@ -117,7 +117,10 @@ class RiboGraphFlux(RiboGraph):
                  flux_cutoff = 0.001,
                  retention_limit: int|None = 1,
                  **attr):
+        
+
         super().__init__(incoming_graph_data, **attr)
+
         self.transitions = transition_map
         self.begun = False
         if incoming_graph_data is not None:
@@ -522,23 +525,14 @@ class RiboGraphFlux(RiboGraph):
         for path in nx.all_simple_paths(self, u , v):
             total_proportion += self.flux_proportion_path(path)
         return total_proportion
+    
+
     def flux_proportion_path(self, path: list[RiboNode]) -> float:
         if not path:
             raise ValueError('Cannot compute flux proportion of an empty path')
 
         # Total flux proportion arriving at path[0] from bulk_node
-        if path[0] == self.bulk_node:
-            entry_proportion = 1.0
-        else:
-            paths_to_start = list(nx.all_simple_paths(self, self.bulk_node, path[0]))
-            if not paths_to_start:
-                raise ValueError(f"No path from {self.bulk_node} to {path[0]}")
-            entry_proportion = 0.0
-            for _path in paths_to_start:
-                p = 1.0
-                for i in range(len(_path) - 1):
-                    p *= self.edge_weight(_path[i], _path[i + 1])
-                entry_proportion += p
+        entry_proportion = self.node_flux(path[0])
 
         # Proportion of that flux which travels along the given path
         path_proportion = 1.0
@@ -547,15 +541,20 @@ class RiboGraphFlux(RiboGraph):
 
         return entry_proportion * path_proportion
 
+    def node_flux(self, nbunch: RiboNode) -> float:
+        total_flux = 0.0
+        for _, _, flux in self.out_edges(nbunch=nbunch, data='flux_start'):
+            total_flux += flux
+        return total_flux 
 
     def _valid_in_out(self):
         out_flux = 0
-        for u,v, flux in self.in_edges(self.bulk_node, data='flux_end'):
+        for _,_, flux in self.in_edges(self.bulk_node, data='flux_end'):
             out_flux += flux
 
         in_flux = 0
         for node in self.successors(self.bulk_node):
-            for u, v, flux in self.out_edges(node, data='flux_start'):
+            for _, _, flux in self.out_edges(node, data='flux_start'):
                 in_flux += flux
 
         
@@ -567,13 +566,4 @@ class RiboGraphFlux(RiboGraph):
                           'and can be ignored to your deisred level of accuracy.')
             
     def edge_weight(self, u: RiboNode,v: RiboNode):
-        total_flux = 0
-        for _,_, flux in self.out_edges(u, data='flux_start'):
-            total_flux += flux
-
-        return self[u][v]['flux_start'] / total_flux
-
-
-
-    
-    
+        return self[u][v]['flux_start'] / self.node_flux(u)
