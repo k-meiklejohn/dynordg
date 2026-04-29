@@ -133,7 +133,7 @@ class RiboGraphFlux(RiboGraph):
         self.flux_cutoff = flux_cutoff
         self.flux_error = 0.000000000000001
         self.retention_limit = retention_limit
-        if map:
+        if self.transitions:
             self.construct()   
     
     def construct(self):
@@ -422,8 +422,8 @@ class RiboGraphFlux(RiboGraph):
         Flux is recalculated after adding.
         """
         self.transitions.add_weighted_edges_from(tbunch)
-        self.clear_edges
-        self.construct
+        self.clear_edges()
+        self.construct()
 
     def edge_decay(self, u: RiboNode, v: RiboNode):
         if u.phase == v.phase:
