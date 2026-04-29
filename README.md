@@ -40,7 +40,7 @@ graph = RiboGraphFlux(t.transition_map)
 plot = RiboGraphVis(graph)
 
 # Render
-graph.show()
+plot.show()
 ```
 
 ## Example Output
