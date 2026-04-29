@@ -253,12 +253,11 @@ class RiboGraphFlux(RiboGraph):
                 self.add_edge(u, v, flux_start=new_flux, flux_end=new_flux)
                 stack.append((v, new_flux, retained + 1, initiation_node, retention_node))
 
-            # ── Pass 2: initiation / termination edges ─────────────────────────
+            # ── Pass 2: initiation / termination / shift edges ─────────────────────────
             for u, v, w in self.transitions.out_edges(next_node, data='weight'):
                 if self.is_retention(u, v):
                     continue
-                
-
+    
                 if self.is_initiation(u, v):
                     if retained:
                         w *= self.ternary_complex_proportion(retention_node, next_node)
@@ -305,7 +304,7 @@ class RiboGraphFlux(RiboGraph):
                     continue
 
                 in_edges = self.in_edges(node)
-                #ignore nodes with  more than 1 in edge
+                #ignore nodes with more than 1 in edge
                 if len(list(in_edges)) > 1:
                     continue
 
@@ -382,12 +381,6 @@ class RiboGraphFlux(RiboGraph):
             if self.in_degree(u) < 1:
                 parentless_nodes.append(u)
         self.remove_nodes_from(parentless_nodes)
-                
-
-    
-
-                    
-
 
 
     def rein_decay(self, u: RiboNode, v: RiboNode):
@@ -413,6 +406,7 @@ class RiboGraphFlux(RiboGraph):
     
     def is_initiation(self, u, v):
         return u.phase == 0 and v.phase > 0
+    
     
     def add_transition(self, source, target, probability):
         """

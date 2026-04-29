@@ -34,7 +34,7 @@ t = Transcript("AUGGCCAUGGCGCCCAGAACUGGGUAA")
 t.auto_stop_starts()
 
 # Build flux graph
-graph = RiboGraphFlux(t.transition_map)
+graph = RiboGraphFlux(t.transition_map())
 
 # Create render object
 plot = RiboGraphVis(graph)
