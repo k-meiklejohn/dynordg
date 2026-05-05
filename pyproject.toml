@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dynordg"
-version = "0.3.1"
+version = "0.3.2"
 description = "Simulate and render the flux of Ribosomes through Ribosomal Phase Space"
 readme = "README.md"
 authors = [{name = "Kyle A. Meiklejohn", email="kyle.meiklejohn314@gmail.com"}]
