@@ -68,15 +68,13 @@ class Transcript(SeqRecord):
 
         super().__init__(Seq(raw), *args, **kwargs)
 
-        self.events= defaultdict(lambda: defaultdict(dict))
-        self.events[1]['cap'] = {'probability': 1,
-                                 'drop_probability': 0}
-        self.events[len(self.seq)]['end'] = {'probability': 0,
-                                             'drop_probability': 1}      
+        self.events= defaultdict(lambda: defaultdict(float))
+        self.events[1]['cap'] = 1
+        self.events[len(self.seq)]['end'] = 1  
         if auto:
             self.auto_stop_starts()
     
-    def add_event(self, pos: int, type: str, prob: float = 1, drop_prob: float = 0):
+    def add_event(self, pos: int, type: str, prob: float = 1):
 
         """
         Add event to the transcript of with types: initiation, termination, ires, shift+/-n
@@ -86,8 +84,10 @@ class Transcript(SeqRecord):
         """
 
         if pos > len(self):
-            raise ValueError('')
-        self.events[pos][type] = {'probability': prob, 'drop_probability': drop_prob}
+            raise ValueError(f'Pos may not be greater than length({len(self)}), got {pos} )')
+        if prob > 1 or prob <= 0:
+            raise ValueError(f'Probability must be greater than 0 and not above 1, got {prob} ')
+        self.events[pos][type] = prob
     
     def transition_map(self, weight_cutoff = 0.0) -> TransitionMap:
         
@@ -99,13 +99,11 @@ class Transcript(SeqRecord):
         list_of_transitions: list[RiboTransition] = []
         for pos in self.events:
             for event in self.events[pos]:
-                prob = self.events[pos][event]['probability'] if 'probability' in self.events[pos][event] else 0
-                drop_prob = self.events[pos][event]['drop_probability'] if 'drop_probability' in self.events[pos][event] else 0
-                if prob + drop_prob > weight_cutoff:
+                prob = self.events[pos][event]
+                if prob > weight_cutoff:
                     list_of_events.append(RiboEvent(pos,
                                                     event,
-                                                    prob,
-                                                    drop_prob))
+                                                    prob))
         for event in list_of_events:
             list_of_transitions.extend(event.to_transition())
         tmap = TransitionMap()
@@ -162,7 +160,9 @@ class Transcript(SeqRecord):
                         self.add_event(i+1, 'initiation', prob)
                         
             elif codon in ['UAG', 'UGA', 'UAA']:
-                self.add_event(i+1, 'termination', reinitiation_prob, 1)
+                self.add_event(i+1, 'termination', 1)
+                if reinitiation_prob > 0:
+                    self.add_event(i+1, 'retention', reinitiation_prob)
 
   
 

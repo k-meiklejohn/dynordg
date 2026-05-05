@@ -96,13 +96,13 @@ class RiboGraphVis(RiboGraph):
         self.renderer = renderer or RiboRenderer(fig_size=fig_size, dpi=dpi)
 
         super().__init__(**attr)
-        for node in incoming_graph_data.nodes:
+        source = incoming_graph_data.simple
+        source.collapse_unused_nodes()
+        source.prune_recycle_edges()
+        for node in source.nodes:
             self.add_node(node)
-        for u, v, data in incoming_graph_data.edges(data=True):
+        for u, v, data in source.edges(data=True):
             self.add_edge(u, v, **data)
-        self.graph.update(incoming_graph_data.graph)
-
-        self._prune_recycle_edges()
         self.compute_layout()
 
     # ── Public API ───────────────────────────────────────────────────────────
@@ -172,19 +172,3 @@ class RiboGraphVis(RiboGraph):
     def positions(self) -> list[Pt]:
         """All world-space (x, y) points in the current layout."""
         return self.layout_result.all_points
-
-    # ── Graph prep ───────────────────────────────────────────────────────────
-
-    def _prune_recycle_edges(self) -> None:
-        """
-        Remove bulk-to-bulk edges and any nodes they leave isolated.
-
-        Edges where both u and v have phase == -1 are recycling arcs internal
-        to the bulk pool.  They carry no mRNA-positional information and
-        produce degenerate geometry, so they are stripped before layout runs.
-        """
-        dead = [(u, v) for u, v in self.edges
-                if u.phase == -1 and v.phase == -1]
-        self.remove_edges_from(dead)
-        isolated = [n for n, d in self.degree() if d < 1]
-        self.remove_nodes_from(isolated)

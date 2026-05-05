@@ -8,7 +8,7 @@ class RiboGraph(DiGraph):
 
     def __init__(self, incoming_graph_data = None, **attr):
         super().__init__(incoming_graph_data, **attr)
-        self.bulk_node = RiboNode((-1,-1))
+        self.bulk_node = RiboNode((-1,-1, False))
         self.add_node(self.bulk_node)
 
     def add_node(self, node_for_adding: RiboNode, **attr):
@@ -38,7 +38,7 @@ class RiboGraph(DiGraph):
         super().add_nodes_from(nodes_for_adding, **attr)
     
     
-    def add_edge(self, u, v, **attr):
+    def add_edge(self, u:RiboNode, v:RiboNode, **attr):
         """
         Add an edge consisting of 2 RiboNodes to a graph
         """
@@ -57,7 +57,7 @@ class RiboGraph(DiGraph):
                     merged[key] = new_val
                 elif new_val is None:
                     merged[key] = existing_val
-                elif key.startswith('flux'): #this may change
+                elif key.startswith(('flux', 'decay')): #this may change
                     merged[key] = existing_val + new_val
                 else:
                     merged[key] = new_val  # overwrite non-flux attributes
