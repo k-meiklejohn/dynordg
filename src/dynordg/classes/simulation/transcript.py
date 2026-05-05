@@ -68,9 +68,9 @@ class Transcript(SeqRecord):
 
         super().__init__(Seq(raw), *args, **kwargs)
 
-        self.events= defaultdict(lambda: defaultdict(float))
-        self.events[1]['cap'] = 1
-        self.events[len(self.seq)]['end'] = 1  
+        self.events= defaultdict(lambda: defaultdict(defaultdict[str, float|str|bool]))
+        self.events[0]['cap']['probability'] = 1
+        self.events[len(self.seq)]['end']['probability'] = 1  
         if auto:
             self.auto_stop_starts()
     
@@ -87,7 +87,7 @@ class Transcript(SeqRecord):
             raise ValueError(f'Pos may not be greater than length({len(self)}), got {pos} )')
         if prob > 1 or prob <= 0:
             raise ValueError(f'Probability must be greater than 0 and not above 1, got {prob} ')
-        self.events[pos][type] = prob
+        self.events[pos][type]['probability'] = prob
     
     def transition_map(self, weight_cutoff = 0.0) -> TransitionMap:
         
@@ -99,7 +99,7 @@ class Transcript(SeqRecord):
         list_of_transitions: list[RiboTransition] = []
         for pos in self.events:
             for event in self.events[pos]:
-                prob = self.events[pos][event]
+                prob = self.events[pos][event]['probability']
                 if prob > weight_cutoff:
                     list_of_events.append(RiboEvent(pos,
                                                     event,

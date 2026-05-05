@@ -320,7 +320,7 @@ class RiboRenderer:
     # ── Colour palette ───────────────────────────────────────────────────────
 
     COLOR_DICT: dict[str, str] = {
-        'shift':           'red',
+        'frameshift':           'red',
         '40s_retention':   'orange',
         'drop':            'purple',
         'initiation':      'green',
@@ -335,7 +335,7 @@ class RiboRenderer:
     # ── Per-type style overrides (merged on top of the default) ──────────────
 
     STYLE_OVERRIDES: dict[str, dict] = {
-        # e.g. 'shift': {'alpha': 0.8, 'linewidth': 1.0},
+        # e.g. 'frameshift': {'alpha': 0.8, 'linewidth': 1.0},
     }
 
     # ── Construction / entry point ───────────────────────────────────────────

@@ -7,27 +7,27 @@ from typing import Literal
 from ....constants import ARROW_DEPTH_SCALE, _GEOM_POINT_KEYS
 
 _IN_EDGE_ORDER: dict[tuple, int] = {
-    ('shift',         +1, -1): 0,
+    ('frameshift',         +1, -1): 0,
     ('initiation',    +1):     1,
-    ('shift',         +1, +1): 2,
+    ('frameshift',         +1, +1): 2,
     ('load',          +1):     3,
     # 4 reserved for direction == 0
     ('load',          -1):     5,
-    ('shift',         -1, +1): 6,
+    ('frameshift',         -1, +1): 6,
     ('40s_retention', -1):     7,
-    ('shift',         -1, -1): 8,
+    ('frameshift',         -1, -1): 8,
 }
 
 _OUT_EDGE_ORDER: dict[tuple, int] = {
-    ('shift',         -1, -1): 0,
+    ('frameshift',         -1, -1): 0,
     ('40s_retention', -1):     1,
-    ('shift',         -1, +1): 2,
+    ('frameshift',         -1, +1): 2,
     ('drop',          -1):     3,
     # 4 reserved for direction == 0
     ('drop',          +1):     5,
-    ('shift',         +1, +1): 6,
+    ('frameshift',         +1, +1): 6,
     ('initiation',    +1):     7,
-    ('shift',         +1, -1): 8,
+    ('frameshift',         +1, -1): 8,
 }
 
 
@@ -36,7 +36,7 @@ _IN_EDGE_ORDER and _OUT_EDGE_ORDER define the vertical stacking priority of
 edges on each face of a node.  Lower integers sit closer to the bottom of
 the node face.  Slot 4 is reserved for horizontal (direction == 0) edges.
 
-Keys are (etype, direction) or (etype, direction, shift_n) for 'shift' edges.
+Keys are (etype, direction) or (etype, direction, shift_n) for 'frameshift' edges.
 Any combination not present in the table is rejected by _sort_key() with an
 assertion error.
 """
@@ -46,8 +46,8 @@ assertion error.
 def _sort_key(spec: EdgeSpec, direction: int, order: dict) -> tuple[int, int]:
     if direction == 0:
         return (4, 0)
-    if spec.etype == 'shift':
-        priority = order.get(('shift', direction, spec.shift_n), 99)
+    if spec.etype == 'frameshift':
+        priority = order.get(('frameshift', direction, spec.shift_n), 99)
     else:
         priority = order.get((spec.etype, direction), 99)
     assert priority != 99, \
@@ -236,9 +236,9 @@ class LayoutEngine:
         elif u.phase > 0 and v.phase == 0:
             etype = '40s_retention'
         else:
-            etype = 'shift'
+            etype = 'frameshift'
 
-        shift_n   = (v.position - u.position) if etype == 'shift' else 0
+        shift_n   = (v.position - u.position) if etype == 'frameshift' else 0
         direction = (
             None if (u.phase == -1 or v.phase == -1)
             else int((v.phase - u.phase) / abs(v.phase - u.phase))
@@ -747,7 +747,7 @@ class LayoutEngine:
         for (u, v), g in geoms.items():
             if u.phase == -1 or v.phase == -1:
                 continue
-            if not g.is_event or g.etype == 'shift':
+            if not g.is_event or g.etype == 'frameshift':
                 continue
             # Determine x-gap based on edge direction
             # direction +1 → in1/out0, direction -1 → in0/out1

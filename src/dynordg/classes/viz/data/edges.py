@@ -13,14 +13,14 @@ Edge = tuple[RiboNode, RiboNode]
 # ─────────────────────────────────────────────────────────────────────────────
 
 EdgeType = Literal[
-    'shift', '40s_retention', 'drop', 'initiation', 'load',
+    'frameshift', '40s_retention', 'drop', 'initiation', 'load',
     '0', '1', '2', '3',
 ]
 """
 Semantic classification of an edge in the flux graph.
 
     '0', '1', '2', '3'  –  horizontal continuation edges within a phase lane
-    'shift'              –  phase-change edge where the ribosome moves forward
+    'frameshift'              –  phase-change edge where the ribosome moves forward
                             in position (codon displacement given by shift_n)
     'initiation'         –  60S joining; 40S (phase 0) → 80S (phase > 0)
     '40s_retention'      –  80S → 40S retention without forward movement
