@@ -167,7 +167,7 @@ class RiboGraphFlux(RiboGraph):
                 self.add_edge(self.bulk_node, u, weight=flux, flux_start=flux, flux_end=flux)
                 self.add_edge(u, v, weight=flux, flux_start=flux, flux_end=flux )
 
-                self._iterate_graph(v, flux, initiation_node=v) 
+                self._iterate_graph(v, flux) 
                 self._normalize_flux()
 
         # self._collapse_unused_nodes()
@@ -195,20 +195,18 @@ class RiboGraphFlux(RiboGraph):
 
     
 
-    def _iterate_graph(self, node: RiboNode, flux, retained=0,
-                   initiation_node: RiboNode | None = None,
-                   retention_node: RiboNode | None = None):
+    def _iterate_graph(self, node: RiboNode, flux: float, retained:int=0):
         """
         Builds the graph using an explicit stack
         """
 
 
-        stack = [(node, flux, retained, initiation_node, retention_node)]
+        stack = [(node, flux, retained)]
 
         while stack:
             
             
-            node, flux, retained, initiation_node, retention_node = stack.pop()
+            node, flux, retained = stack.pop()
             
             
             
@@ -235,10 +233,8 @@ class RiboGraphFlux(RiboGraph):
                                 continue
 
                         if self.is_retention(u,v):
-                            retention_node = v
                             retained += 1
-                        elif self.is_initiation(u,v):
-                            initiation_node = v
+
 
                         remaining_flux -= new_flux
 
@@ -248,7 +244,7 @@ class RiboGraphFlux(RiboGraph):
                             self.add_edge(v, self.bulk_node, flux_start=new_flux, flux_end=new_flux)
                             continue
 
-                        stack.append((v, new_flux, retained, initiation_node, retention_node))
+                        stack.append((v, new_flux, retained))
 
             
             # ── Continuation on same phase ─────────────────────────────────────
@@ -279,7 +275,6 @@ class RiboGraphFlux(RiboGraph):
                 if node.factors and node.phase > 0:
                     swap_flux = remaining_flux
                     if self.retention_limit != None:
-                        print(retained)
                         if retained < self.retention_limit:
                             swap_flux = remaining_flux - remaining_flux * self.rein_proportion(node, next_node)
       
@@ -290,9 +285,7 @@ class RiboGraphFlux(RiboGraph):
                         remaining_flux -= swap_flux
                         stack.append((no_factors_node,
                                     swap_flux,
-                                    retained,
-                                    initiation_node,
-                                    retention_node))
+                                    retained))
                         
                         
                 elif not node.factors and node.phase == 0:
@@ -305,16 +298,14 @@ class RiboGraphFlux(RiboGraph):
                         remaining_flux -= swap_flux
                         stack.append((factors_node,
                                       swap_flux,
-                                      retained,
-                                      initiation_node,
-                                      retention_node)
+                                      retained)
                                      )
 
                 
                 if remaining_flux >= self.flux_error:
-                    
-                    stack.append((next_node, remaining_flux,
-                                retained, initiation_node, retention_node))
+                    stack.append((next_node,
+                                  remaining_flux,
+                                  retained))
 
 
     def rein_proportion(self, u: RiboNode, v: RiboNode):
