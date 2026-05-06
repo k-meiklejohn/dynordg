@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dynordg"
-version = "0.3.4"
+version = "0.3.6"
 description = "Simulate and render the flux of Ribosomes through Ribosomal Phase Space"
 readme = "README.md"
 authors = [{name = "Kyle A. Meiklejohn", email="kyle.meiklejohn314@gmail.com"}]
@@ -27,7 +27,6 @@ dependencies = [
     "levenshtein >= 0.27.3",
     "matplotlib >= 3.10.6",
     "networkx >= 3.5",
-    "pandas >= 2.3.3",
 ]
 
 requires-python = ">=3.12"
