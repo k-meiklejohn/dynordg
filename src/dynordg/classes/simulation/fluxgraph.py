@@ -174,7 +174,7 @@ class RiboGraphFlux(RiboGraph):
         self._is_valid()
 
 
-    def _downstream_node(self, node: RiboNode):
+    def _downstream_node(self, node: RiboNode) -> RiboNode|None:
         same_phase_ahead = [p.position for p in self.transitions.nodes 
                             if p.position > node.position 
                             and p.phase == node.phase]
@@ -187,11 +187,14 @@ class RiboGraphFlux(RiboGraph):
                             if p.position > node.position 
                             and p.phase == node.phase])
         
-
-        
-        return RiboNode(next_pos, 
+        next_node = RiboNode(next_pos, 
                         node.phase, 
                         node.factors)
+        
+        if not self.transitions.has_node(next_node):
+            next_node = RiboNode(next_node.position, next_node.phase, not next_node.factors)
+        
+        return next_node
 
     
 
@@ -257,6 +260,8 @@ class RiboGraphFlux(RiboGraph):
                     self.add_edge(node, drop_node, flux_start=remaining_flux, flux_end=remaining_flux)
                     self.add_edge(drop_node, self.bulk_node, flux_start=flux, flux_end=flux)
                     continue
+
+
 
                 # ── Decay ──────────────────────────────────────────────────────────
                 
