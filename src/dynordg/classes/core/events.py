@@ -134,9 +134,11 @@ class RiboEvent(tuple):
                 raise ValueError(f"Type of RiboEvent tuple must be 'str', got {type(data[1]).__name__!r}")
             elif not isinstance(data[2], (float, int)):
                 raise ValueError("Probabilities must be float or int")
-            elif data[2] <= 0 or data[2] >1:
-                raise ValueError(f'Probability must be greater than 0 and less than or equal to 1, got {data[2]}')
+            elif data[2] <= 0:
+                    raise ValueError(f'Probability must be greater than 0, got {data[2]}')
 
+            elif data[2] >1 and data[1] not in ('load_scanning', 'cap', 'ires'):
+                raise ValueError (f'Non-loading probabilities cannot exceed 1, got {data[2]}')
             return super().__new__(cls, data)
     
     def __init__(self, *args):
