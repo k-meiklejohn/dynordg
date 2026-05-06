@@ -1,23 +1,21 @@
-from ..data import AUG_SCORE, NON_AUG_SCORE
+from ..data import SEQUENCE_TO_EFF_AUG, SEQUENCE_TO_EFF_NON_AUG
 
 def start_score(sequence: str, aug: bool):
     """
-    Calculate the probabiltily of initation of a start site. if aug is True, 
-    must give a sequence of length 11, else length 8. Sequence must only contain A,U,G or C 
+    Calculate probability of initiation of a start site.
+    AUG: length 11
+    non-AUG: length 8
     """
 
-    if len(sequence) != 11 and aug:
-        raise ValueError(f'Sequence must be length 11 when aug is True, got {len(sequence)}: {sequence}')
-    elif len(sequence) != 8 and not aug:
-        raise ValueError(f'Sequence must be length 8 when aug is false, got {len(sequence)}: {sequence}')
-    
-    df = AUG_SCORE if aug else NON_AUG_SCORE
+    if aug and len(sequence) != 11:
+        raise ValueError(f"Expected length 11, got {len(sequence)}: {sequence}")
+    if not aug and len(sequence) != 8:
+        raise ValueError(f"Expected length 8, got {len(sequence)}: {sequence}")
 
-    
-    match = df[df['sequence'] == sequence]
-    
-    if match.empty:
-        return 0  # or raise an error / default value
-    
-    efficiency = match['efficiency'].values[0]
-    return min(efficiency * 0.84/100, 1)
+    table = SEQUENCE_TO_EFF_AUG if aug else SEQUENCE_TO_EFF_NON_AUG
+
+    efficiency = table.get(sequence)
+    if efficiency is None:
+        return 0
+
+    return min(efficiency * 0.84 / 100, 1)

@@ -1,9 +1,13 @@
-from pandas import read_csv
-from pathlib import Path
+from importlib.resources import files, as_file
+import csv
 
+def load_score_dict(filename: str) -> dict:
+    with as_file(files("dynordg.data") / filename) as path:
+        with open(path, newline="") as f:
+            reader = csv.DictReader(f)
+            return {row["sequence"]: float(row["efficiency"]) for row in reader}
+        
 
-BASE_DIR = Path(__file__).resolve().parent
-
-AUG_SCORE = read_csv(BASE_DIR / 'aug.csv')
-NON_AUG_SCORE = read_csv(BASE_DIR / 'non_aug.csv')
+SEQUENCE_TO_EFF_AUG = load_score_dict("aug.csv")
+SEQUENCE_TO_EFF_NON_AUG = load_score_dict("non_aug.csv")
 

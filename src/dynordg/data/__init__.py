@@ -1,1 +1,1 @@
-from .noderer import AUG_SCORE, NON_AUG_SCORE
+from .noderer import SEQUENCE_TO_EFF_AUG, SEQUENCE_TO_EFF_NON_AUG
