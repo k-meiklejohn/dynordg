@@ -544,7 +544,7 @@ class RiboGraphFlux(RiboGraph):
                     translon = True
                     current_translon.append(edge)
 
-        return translon_list
+        return list(set(translon_list))
 
     def flux_proportion(self, u:RiboNode, v:RiboNode) -> float:
         total_proportion = 0
