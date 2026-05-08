@@ -97,7 +97,6 @@ class RiboGraphVis(RiboGraph):
 
         super().__init__(**attr)
         source = incoming_graph_data.simple
-        source.collapse_unused_nodes()
         source.prune_recycle_edges()
         for node in source.nodes:
             self.add_node(node)

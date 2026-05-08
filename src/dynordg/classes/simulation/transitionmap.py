@@ -1,6 +1,5 @@
 from ..graph.ribograph import RiboGraph
-from ..core import RiboTransition
-
+from ..core import RiboTransition, RiboNode
 
 class TransitionMap(RiboGraph):
     """
@@ -119,5 +118,24 @@ class TransitionMap(RiboGraph):
 
     def to_fluxgraph(self, half_life_translation = None, half_life_scanning = None):
         from .fluxgraph import RiboGraphFlux
-        return RiboGraphFlux(transition_map=self, half_life_translation=half_life_translation, half_life_scanning=half_life_scanning)
+        return RiboGraphFlux(skeleton=self, half_life_translation=half_life_translation, half_life_scanning=half_life_scanning)
 
+    def downstream_node(self, node: RiboNode) -> RiboNode|None:
+        same_phase_ahead = [p.position for p in self.nodes 
+                            if p.position > node.position 
+                            and p.phase == node.phase]
+        if not same_phase_ahead:
+            return None
+        next_pos = min(same_phase_ahead)
+        
+        
+        next_pos = min([p.position for p in self.nodes 
+                            if p.position > node.position 
+                            and p.phase == node.phase])
+        
+        next_node = RiboNode(next_pos, 
+                        node.phase, 
+                        node.factors)
+        if node.phase != next_node.phase:
+            print(node, next_node, 'bing')
+        return next_node

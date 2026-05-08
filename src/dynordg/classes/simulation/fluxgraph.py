@@ -1,9 +1,12 @@
 from ..graph import RiboGraph
 from .transitionmap import TransitionMap
+from .skeleton import RiboSkeleton
 from ..core import RiboNode
 import networkx as nx
 import warnings
 from copy import deepcopy
+from collections import defaultdict
+import heapq
 
 class RiboGraphFlux(RiboGraph):
     """
@@ -107,13 +110,9 @@ class RiboGraphFlux(RiboGraph):
       internal tolerance (flux_error = 1e-15).
     """
 
-    def __init__(self, transition_map: TransitionMap, 
+    def __init__(self, skeleton: RiboSkeleton, 
                  incoming_graph_data=None, 
-                 half_life_scanning: float|None = None, 
-                 half_life_translation: float|None = None, 
                  weight_cutoff=0.0, 
-                 reinitiation_half_life = None,
-                 ternary_complex_half_life = None,
                  flux_cutoff = 0.001,
                  retention_limit: int|None = 1,
                  **attr):
@@ -121,15 +120,11 @@ class RiboGraphFlux(RiboGraph):
 
         super().__init__(incoming_graph_data, **attr)
 
-        self.transitions = transition_map
+        self.transitions = skeleton
         self.begun = False
         if incoming_graph_data is not None:
             raise ValueError('Incoming graph data must be left empty, graph is calculated from transition_map')
-        self.half_life_translation = half_life_translation
-        self.half_life_scanning = half_life_scanning
         self.weight_cutoff = weight_cutoff
-        self.reinitiation_potential=reinitiation_half_life
-        self.tc_half_life = ternary_complex_half_life
         self.flux_cutoff = flux_cutoff
         self.flux_error = 0.000000000000001
         self.retention_limit = retention_limit
@@ -164,188 +159,226 @@ class RiboGraphFlux(RiboGraph):
             if u.phase == -1:
                 self.add_edge(self.bulk_node, u)
                 flux = norm_weight[self.transitions[u][v]['weight']]
-                self.add_edge(self.bulk_node, u, weight=flux, flux_start=flux, flux_end=flux)
-                self.add_edge(u, v, weight=flux, flux_start=flux, flux_end=flux )
+                self.add_edge(self.bulk_node, u, weight=flux, flux=flux)
+                self.add_edge(u, v, weight=flux, flux=flux )
 
-                self._iterate_graph(v, flux) 
+                self._iterate_graph_topo(v, flux) 
                 self._normalize_flux()
 
-        # self._collapse_unused_nodes()
+        self.collapse_unused_nodes()
         self._is_valid()
 
 
-    def _downstream_node(self, node: RiboNode) -> RiboNode|None:
-        same_phase_ahead = [p.position for p in self.transitions.nodes 
-                            if p.position > node.position 
-                            and p.phase == node.phase]
-        if not same_phase_ahead:
-            return None
-        next_pos = min(same_phase_ahead)
-        
-        
-        next_pos = min([p.position for p in self.transitions.nodes 
-                            if p.position > node.position 
-                            and p.phase == node.phase])
-        
-        next_node = RiboNode(next_pos, 
-                        node.phase, 
-                        node.factors)
-        
-        if not self.transitions.has_node(next_node):
-            next_node = RiboNode(next_node.position, next_node.phase, not next_node.factors)
-        
-        return next_node
 
-    
+    def _iterate_graph_topo(self, start_node: RiboNode, start_flux: float, start_retained: int = 0):
+        
+        # Pre-compute topological order from the structural graph
 
-    def _iterate_graph(self, node: RiboNode, flux: float, retained:int=0):
-        """
-        Builds the graph using an explicit stack
-        """
+        topo_order = list(nx.topological_sort(self.transitions))
+        # pending[node][retained] = accumulated flux
+        pending: dict[RiboNode, dict[int, float]] = defaultdict(lambda: defaultdict(float))
+        pending[start_node][start_retained] += start_flux
 
+        # Track how many upstream nodes have finished for each node
+        # so we only process once all incoming flux is accumulated
+        in_degree_remaining = {node: self.transitions.in_degree(node) for node in self.transitions.nodes}
+        # start_node has no upstream in this traversal
+        in_degree_remaining[start_node] = 0
 
-        stack = [(node, flux, retained)]
+        def dispatch(target: RiboNode, flux: float, retained: int):
+            """Accumulate flux and decrement the sender's contribution to target's in-degree."""
+            if target == self.bulk_node:
+                return
+            pending[target][retained] += flux
+            in_degree_remaining[target] -= 1
 
-        while stack:
-            
-            
-            node, flux, retained = stack.pop()
-            
-            
-            
-            if node == self.bulk_node:
+        for node in topo_order:
+            # Skip if nothing arrived or node isn't ready yet
+            if in_degree_remaining.get(node, 0) > 0:
+                continue
+            if not pending.get(node):
+                continue
+
+            for retained, flux in list(pending[node].items()):
+                if flux < self.flux_error:
                     continue
 
-            remaining_flux = flux
+                remaining_flux = flux
+                out_edges = list(self.transitions.out_edges(node, data='weight'))
 
-            # ── Pass 2: initiation / termination / shift edges ─────────────────────────
-            if self.transitions.out_degree(node):
-                if self.transitions.out_degree(node) > 0:
-                    for u, v, w in self.transitions.out_edges(node, data='weight'):
-                        
-                        new_flux = flux * w
+                # ── Transition edges ──────────────────────────────────────────
+                for u, v, w in out_edges:
+                    new_flux = flux * w
 
-                        if v.phase != -1 and new_flux < self.flux_cutoff:
-                            if node.phase >= 1:
-                                drop_node = RiboNode(u.position, -1, False)
-                                self.add_edge(u, drop_node, flux_start=new_flux, flux_end=new_flux)
-                                self.add_edge(drop_node, self.bulk_node, flux_start=new_flux, flux_end=new_flux)
-                                remaining_flux -= new_flux
-                                continue
-                            else:
-                                continue
+                    if v.phase != -1 and new_flux < self.flux_cutoff:
+                        if node.phase >= 1:
+                            drop_node = RiboNode(u.position, -1, False)
+                            self.add_edge(u, drop_node, flux=new_flux)
+                            self.add_edge(drop_node, self.bulk_node, flux=new_flux)
+                        continue
 
-                        if self.is_retention(u,v):
-                            next_retained = retained + 1
-                        else:
-                            next_retained = retained
+                    next_retained = retained + 1 if self.is_retention(u, v) else retained
+                    self.add_edge(u, v, flux=new_flux)
+
+                    if v.phase == -1:
+                        self.add_edge(v, self.bulk_node, flux=new_flux)
+                        continue
+
+                    dispatch(v, new_flux, next_retained)
+
+            del pending[node]
+
+    # def _iterate_graph_topo(self, start_node: RiboNode, start_flux: float, start_retained: int = 0):
+    #     if not hasattr(self, '_downstream_cache'):
+    #         self._build_downstream_cache()
+
+    #     # Each node accumulates (flux, retained) — we sum flux per retained level
+    #     # pending[node] = {retained: total_flux}
+    #     pending: dict[RiboNode, dict[int, float]] = defaultdict(lambda: defaultdict(float))
+    #     pending[start_node][start_retained] += start_flux
+
+    #     # Process in position order — acts as topological order since edges
+    #     # only go to higher positions (or to bulk/phase=-1 which are sinks)
+    #     # Use a min-heap keyed on position
+    #     heap = [(start_node.position, start_node)]
+    #     in_heap: set[RiboNode] = {start_node}
+
+    #     def push(node: RiboNode):
+    #         if node not in in_heap and node != self.bulk_node:
+    #             heapq.heappush(heap, (node.position, node))
+    #             in_heap.add(node)
+
+    #     while heap:
+    #         _, node = heapq.heappop(heap)
+    #         in_heap.discard(node)
+
+    #         if not pending[node]:
+    #             continue
+
+    #         # ── Process all (flux, retained) buckets for this node ───────────
+    #         for retained, flux in list(pending[node].items()):
+    #             if flux < self.flux_error:
+    #                 continue
+
+    #             remaining_flux = flux
+    #             out_edges = list(self.transitions.out_edges(node, data='weight'))
+
+    #             # ── Transition edges (initiation / termination / shift) ───────
+    #             for u, v, w in out_edges:
+    #                 new_flux = flux * w
+
+    #                 if v.phase != -1 and new_flux < self.flux_cutoff:
+    #                     if node.phase >= 1:
+    #                         drop_node = RiboNode(u.position, -1, False)
+    #                         self.add_edge(u, drop_node, flux_start=new_flux, flux_end=new_flux)
+    #                         self.add_edge(drop_node, self.bulk_node, flux_start=new_flux, flux_end=new_flux)
+    #                         remaining_flux -= new_flux
+    #                     continue
+
+    #                 next_retained = retained + 1 if self.is_retention(u, v) else retained
+    #                 remaining_flux -= new_flux
+    #                 self.add_edge(u, v, flux_start=new_flux, flux_end=new_flux)
+
+    #                 if v.phase == -1:
+    #                     self.add_edge(v, self.bulk_node, flux_start=new_flux, flux_end=new_flux)
+    #                     continue
+
+    #                 # Accumulate into downstream node
+    #                 pending[v][next_retained] += new_flux
+    #                 push(v)
+
+    #             # ── Continuation on same phase ────────────────────────────────
+    #             if remaining_flux <= self.flux_error:
+    #                 continue
+
+    #             next_node = self._downstream_node(node)
+
+    #             if next_node is None:
+    #                 drop_node = RiboNode(node.position, -1)
+    #                 self.add_edge(node, drop_node, flux_start=remaining_flux, flux_end=remaining_flux)
+    #                 self.add_edge(drop_node, self.bulk_node, flux_start=remaining_flux, flux_end=remaining_flux)
+    #                 continue
+
+    #             # ── Decay ─────────────────────────────────────────────────────
+    #             drop_flux = remaining_flux * self.edge_decay(node, next_node)
+    #             if drop_flux != 0:
+    #                 drop_node = RiboNode(next_node.position, -1)
+    #                 self.add_edge(next_node, drop_node, flux_start=drop_flux, flux_end=drop_flux)
+    #                 self.add_edge(drop_node, self.bulk_node, flux_start=drop_flux, flux_end=drop_flux)
+
+    #             self.add_edge(node, next_node,
+    #                         flux_start=remaining_flux,
+    #                         flux_end=remaining_flux - drop_flux,
+    #                         decay=drop_flux)
+    #             remaining_flux -= drop_flux
+
+    #             # ── Factor swapping ───────────────────────────────────────────
+    #             if node.factors and node.phase > 0:
+    #                 if self.retention_limit is not None:
+    #                     if retained >= self.retention_limit:
+    #                         swap_flux = remaining_flux
+    #                     else: 
+    #                         swap_flux = remaining_flux - remaining_flux * self.rein_proportion(node, next_node)
+
+    #                 else:
+    #                     swap_flux = remaining_flux - remaining_flux * self.rein_proportion(node, next_node)
+
+    #                 if swap_flux != 0:
+    #                     no_factors_node = RiboNode(next_node.position, next_node.phase, False)
+    #                     self.add_edge(next_node, no_factors_node, flux_start=swap_flux, flux_end=swap_flux)
+    #                     remaining_flux -= swap_flux
+    #                     pending[no_factors_node][retained] += swap_flux
+    #                     push(no_factors_node)
+
+    #             elif not node.factors and node.phase == 0:
+    #                 swap_flux = remaining_flux * self.ternary_complex_proportion(node, next_node)
+    #                 if swap_flux != 0:
+    #                     factors_node = RiboNode(next_node.position, next_node.phase, True)
+    #                     self.add_edge(next_node, factors_node, flux_start=swap_flux, flux_end=swap_flux)
+    #                     remaining_flux -= swap_flux
+    #                     pending[factors_node][retained] += swap_flux
+    #                     push(factors_node)
+
+    #             if remaining_flux >= self.flux_error:
+    #                 pending[next_node][retained] += remaining_flux
+    #                 push(next_node)
+
+    #         del pending[node]
 
 
-                        remaining_flux -= new_flux
+    def _build_downstream_cache(self):
+        """
+        Pre-compute downstream nodes for all nodes in self.transitions.
+        Groups nodes by phase, sorts by position — O(N log N) once,
+        vs O(N) per _downstream_node call during traversal.
+        """
+        from collections import defaultdict
 
-                        self.add_edge(u, v, flux_start=new_flux, flux_end=new_flux)
+        by_phase = defaultdict(list)
+        for node in self.transitions.nodes:
+            by_phase[node.phase].append(node)
+        for phase in by_phase:
+            by_phase[phase].sort(key=lambda n: n.position)
 
-                        if v.phase == -1:
-                            self.add_edge(v, self.bulk_node, flux_start=new_flux, flux_end=new_flux)
-                            continue
-
-                        stack.append((v, new_flux, next_retained))
-
-            
-            # ── Continuation on same phase ─────────────────────────────────────
-
-            if remaining_flux > self.flux_error:
-                next_node = self._downstream_node(node)
-                
-                if next_node is None:
-                    drop_node = RiboNode(node.position, -1)
-                    self.add_edge(node, drop_node, flux_start=remaining_flux, flux_end=remaining_flux)
-                    self.add_edge(drop_node, self.bulk_node, flux_start=flux, flux_end=flux)
-                    continue
-
-
-
-                # ── Decay ──────────────────────────────────────────────────────────
-                
-                drop_flux = remaining_flux * self.edge_decay(node, next_node)
-                
-
-                if drop_flux != 0:
-                    drop_node = RiboNode(next_node.position, -1)
-                    self.add_edge(next_node, drop_node, flux_start=drop_flux, flux_end=drop_flux)
-                    self.add_edge(drop_node, self.bulk_node, flux_start=drop_flux, flux_end=drop_flux)
-                self.add_edge(node, next_node,
-                            flux_start=remaining_flux, flux_end=remaining_flux-drop_flux, decay=drop_flux)
-                remaining_flux = remaining_flux - drop_flux
-
-                
-                if node.factors and node.phase > 0:
-                    if self.retention_limit != None:
-                        if retained < self.retention_limit:
-                            swap_flux = remaining_flux - remaining_flux * self.rein_proportion(node, next_node)
-                        else:
-                            swap_flux = remaining_flux
-                    else:
-                        swap_flux = 0
-
-
-                    if swap_flux != 0:
-                        no_factors_node = RiboNode(next_node.position, next_node.phase, False)
-                        self.add_edge(next_node, no_factors_node,
-                                    flux_start=swap_flux, flux_end=swap_flux)
-                        remaining_flux -= swap_flux
-                        stack.append((no_factors_node,
-                                    swap_flux,
-                                    retained))
-                        
-                        
-                elif not node.factors and node.phase == 0:
-                    swap_flux = remaining_flux*self.ternary_complex_proportion(node, next_node)
-                    if swap_flux != 0:
-                        factors_node = RiboNode(next_node.position, next_node.phase, True)
-                        self.add_edge(next_node, factors_node,
-                                      flux_start=swap_flux,
-                                      flux_end=swap_flux )
-                        remaining_flux -= swap_flux
-                        stack.append((factors_node,
-                                      swap_flux,
-                                      retained)
-                                     )
-
-                
-                if remaining_flux >= self.flux_error:
-                    stack.append((next_node,
-                                  remaining_flux,
-                                  retained))
-
-
-    def rein_proportion(self, u: RiboNode, v: RiboNode):
-        if u.phase == v.phase:
-            if u.phase > 0:
-
-                if not self.reinitiation_potential:
-                    return 1
+        self._downstream_cache = {}
+        for node in self.transitions.nodes:
+            candidates = by_phase[node.phase]
+            # Binary search for first position > node.position
+            lo, hi = 0, len(candidates)
+            while lo < hi:
+                mid = (lo + hi) // 2
+                if candidates[mid].position <= node.position:
+                    lo = mid + 1
                 else:
-                    half_life = self.reinitiation_potential
-            
+                    hi = mid
+            if lo < len(candidates):
+                self._downstream_cache[node] = candidates[lo]
             else:
-                return 1
+                self._downstream_cache[node] = None
 
-            
-            return 0.5 ** (abs(u.position-v.position) / half_life )
-        
-        else:
-            return 0
-                
-    def ternary_complex_proportion(self, u, v) -> float:
-        if u.phase == 0 and v.phase == 0 and self.tc_half_life != None:
-            half_life = self.tc_half_life
-            if half_life:
-                return 1-0.5 ** (abs(u.position-v.position) / half_life )
-            else: 
-                return 1
-        else:
-            return 1
+
+
+
 
         
     def collapse_unused_nodes(self):
@@ -466,31 +499,14 @@ class RiboGraphFlux(RiboGraph):
         self.clear_edges()
         self.construct()
 
-    def edge_decay(self, u: RiboNode, v: RiboNode):
-        if u.phase == v.phase:
-            if u.phase > 0:
-                half_life = self.half_life_translation
-            elif u.phase == 0:
-                half_life = self.half_life_scanning
-            else:
-                return 0
-            if half_life == None:
-                return 0
-            
-            return 1 - (0.5 ** (abs(u.position-v.position) / half_life ))
-        
-        else:
-            return 0
 
-        
 
     def _normalize_flux(self):
-        flux_keys = ('flux_start', 'flux_end', 'decay')
+        flux_keys = ('flux')
         fluxes = []
         for u,v, data in self.edges(data=True):
-            for key in flux_keys:
-                if key in data:
-                    fluxes.append(data[key])
+            if 'flux' in data:
+                fluxes.append(data['flux'])
         fluxes = set(fluxes)
         max_flux = max(fluxes)
         
@@ -569,18 +585,19 @@ class RiboGraphFlux(RiboGraph):
 
     def node_flux(self, nbunch: RiboNode) -> float:
         total_flux = 0.0
-        for _, _, flux in self.out_edges(nbunch=nbunch, data='flux_start'):
+        for _, _, flux in self.out_edges(nbunch=nbunch, data='flux'):
             total_flux += flux
         return total_flux 
 
     def _valid_in_out(self):
         out_flux = 0
-        for _,_, flux in self.in_edges(self.bulk_node, data='flux_end'):
+        for _,_, flux in self.in_edges(self.bulk_node, data='flux'):
             out_flux += flux
 
         in_flux = 0
         for node in self.successors(self.bulk_node):
-            for _, _, flux in self.out_edges(node, data='flux_start'):
+            print(self[node])
+            for _, _, flux in self.out_edges(node, data='flux'):
                 in_flux += flux
 
         
@@ -592,29 +609,25 @@ class RiboGraphFlux(RiboGraph):
                           'and can be ignored to your deisred level of accuracy.')
             
     def edge_weight(self, u: RiboNode,v: RiboNode):
-        return self[u][v]['flux_start'] / self.node_flux(u)
+        return self[u][v]['flux'] / self.node_flux(u)
     
     @property
     def simple(self):
         out = deepcopy(self)
         out.clear()
         out.bulk_node = self.bulk_node.simple
-        for u, v, data in self.edges(data=True):
+        for u, v, flux in self.edges(data='flux'):
+
             if u.simple == v.simple:
                 continue
-            start = data['flux_start']
-            end = data['flux_end']
-
-            if 'decay' in data:
-                out.add_edge(u.simple, v.simple,
-                            flux_start=start,
-                            flux_end=end,
-                            decay=data['decay']
-                            )
+            if v.phase == -1 and u.position != v.position and u.phase != -1:
+                out.add_edge(u.simple, RiboNode(v.position, u.phase), flux_start=flux, flux_end=0, decay=flux)
+                out.add_edge(RiboNode(v.position, u.phase), v.simple, flux_start=flux, flux_end=flux)
+    
             else:
                 out.add_edge(u.simple, v.simple,
-                                flux_start=start,
-                                flux_end=end)
+                            flux_start=flux,
+                            flux_end=flux)
         return out
     
     def prune_recycle_edges(self) -> None:

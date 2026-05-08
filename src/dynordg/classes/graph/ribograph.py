@@ -11,6 +11,8 @@ class RiboGraph(DiGraph):
         self.bulk_node = RiboNode((-1,-1, False))
         self.add_node(self.bulk_node)
 
+
+
     def add_node(self, node_for_adding: RiboNode, **attr):
         """
         Add a new RiboNode to the graph
@@ -29,12 +31,11 @@ class RiboGraph(DiGraph):
         Add multiple RiboNodes to a graph
         """
         for node in nodes_for_adding:
-            n = node[0] if isinstance(node, tuple) else node
-            if not isinstance(n, RiboNode):
-                if isinstance(n, tuple):
+            if not isinstance(node, RiboNode):
+                if isinstance(node, tuple):
                     pass  # will be coerced by add_node
                 else:
-                    raise TypeError(f'RiboGraph only accepts RiboNodes or RiboNode-like tuples, got {type(n).__name__!r}')
+                    raise TypeError(f'RiboGraph only accepts RiboNodes or RiboNode-like tuples, got {type(node).__name__!r}')
         super().add_nodes_from(nodes_for_adding, **attr)
     
     
@@ -57,7 +58,8 @@ class RiboGraph(DiGraph):
                     merged[key] = new_val
                 elif new_val is None:
                     merged[key] = existing_val
-                elif key.startswith(('flux', 'decay')): #this may change
+                elif key.startswith(('flux', 'decay', 'weight')): #this may change
+                    print(existing_val, new_val)
                     merged[key] = existing_val + new_val
                 else:
                     merged[key] = new_val  # overwrite non-flux attributes
@@ -91,3 +93,19 @@ class RiboGraph(DiGraph):
             for u, v in self.in_edges(node):
                 if u.phase == node.phase:
                     return (u,v)
+                
+
+                import networkx as nx
+
+    def remove_all_indegree_zero_nodes(self):
+        while True:
+            zero_indegree = [n for n, d in self.in_degree() if d == 0]
+
+            if not zero_indegree:
+                break
+
+            self.remove_nodes_from(zero_indegree)
+
+    
+
+
