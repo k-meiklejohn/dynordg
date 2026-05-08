@@ -228,155 +228,6 @@ class RiboGraphFlux(RiboGraph):
 
             del pending[node]
 
-    # def _iterate_graph_topo(self, start_node: RiboNode, start_flux: float, start_retained: int = 0):
-    #     if not hasattr(self, '_downstream_cache'):
-    #         self._build_downstream_cache()
-
-    #     # Each node accumulates (flux, retained) — we sum flux per retained level
-    #     # pending[node] = {retained: total_flux}
-    #     pending: dict[RiboNode, dict[int, float]] = defaultdict(lambda: defaultdict(float))
-    #     pending[start_node][start_retained] += start_flux
-
-    #     # Process in position order — acts as topological order since edges
-    #     # only go to higher positions (or to bulk/phase=-1 which are sinks)
-    #     # Use a min-heap keyed on position
-    #     heap = [(start_node.position, start_node)]
-    #     in_heap: set[RiboNode] = {start_node}
-
-    #     def push(node: RiboNode):
-    #         if node not in in_heap and node != self.bulk_node:
-    #             heapq.heappush(heap, (node.position, node))
-    #             in_heap.add(node)
-
-    #     while heap:
-    #         _, node = heapq.heappop(heap)
-    #         in_heap.discard(node)
-
-    #         if not pending[node]:
-    #             continue
-
-    #         # ── Process all (flux, retained) buckets for this node ───────────
-    #         for retained, flux in list(pending[node].items()):
-    #             if flux < self.flux_error:
-    #                 continue
-
-    #             remaining_flux = flux
-    #             out_edges = list(self.transitions.out_edges(node, data='weight'))
-
-    #             # ── Transition edges (initiation / termination / shift) ───────
-    #             for u, v, w in out_edges:
-    #                 new_flux = flux * w
-
-    #                 if v.phase != -1 and new_flux < self.flux_cutoff:
-    #                     if node.phase >= 1:
-    #                         drop_node = RiboNode(u.position, -1, False)
-    #                         self.add_edge(u, drop_node, flux_start=new_flux, flux_end=new_flux)
-    #                         self.add_edge(drop_node, self.bulk_node, flux_start=new_flux, flux_end=new_flux)
-    #                         remaining_flux -= new_flux
-    #                     continue
-
-    #                 next_retained = retained + 1 if self.is_retention(u, v) else retained
-    #                 remaining_flux -= new_flux
-    #                 self.add_edge(u, v, flux_start=new_flux, flux_end=new_flux)
-
-    #                 if v.phase == -1:
-    #                     self.add_edge(v, self.bulk_node, flux_start=new_flux, flux_end=new_flux)
-    #                     continue
-
-    #                 # Accumulate into downstream node
-    #                 pending[v][next_retained] += new_flux
-    #                 push(v)
-
-    #             # ── Continuation on same phase ────────────────────────────────
-    #             if remaining_flux <= self.flux_error:
-    #                 continue
-
-    #             next_node = self._downstream_node(node)
-
-    #             if next_node is None:
-    #                 drop_node = RiboNode(node.position, -1)
-    #                 self.add_edge(node, drop_node, flux_start=remaining_flux, flux_end=remaining_flux)
-    #                 self.add_edge(drop_node, self.bulk_node, flux_start=remaining_flux, flux_end=remaining_flux)
-    #                 continue
-
-    #             # ── Decay ─────────────────────────────────────────────────────
-    #             drop_flux = remaining_flux * self.edge_decay(node, next_node)
-    #             if drop_flux != 0:
-    #                 drop_node = RiboNode(next_node.position, -1)
-    #                 self.add_edge(next_node, drop_node, flux_start=drop_flux, flux_end=drop_flux)
-    #                 self.add_edge(drop_node, self.bulk_node, flux_start=drop_flux, flux_end=drop_flux)
-
-    #             self.add_edge(node, next_node,
-    #                         flux_start=remaining_flux,
-    #                         flux_end=remaining_flux - drop_flux,
-    #                         decay=drop_flux)
-    #             remaining_flux -= drop_flux
-
-    #             # ── Factor swapping ───────────────────────────────────────────
-    #             if node.factors and node.phase > 0:
-    #                 if self.retention_limit is not None:
-    #                     if retained >= self.retention_limit:
-    #                         swap_flux = remaining_flux
-    #                     else: 
-    #                         swap_flux = remaining_flux - remaining_flux * self.rein_proportion(node, next_node)
-
-    #                 else:
-    #                     swap_flux = remaining_flux - remaining_flux * self.rein_proportion(node, next_node)
-
-    #                 if swap_flux != 0:
-    #                     no_factors_node = RiboNode(next_node.position, next_node.phase, False)
-    #                     self.add_edge(next_node, no_factors_node, flux_start=swap_flux, flux_end=swap_flux)
-    #                     remaining_flux -= swap_flux
-    #                     pending[no_factors_node][retained] += swap_flux
-    #                     push(no_factors_node)
-
-    #             elif not node.factors and node.phase == 0:
-    #                 swap_flux = remaining_flux * self.ternary_complex_proportion(node, next_node)
-    #                 if swap_flux != 0:
-    #                     factors_node = RiboNode(next_node.position, next_node.phase, True)
-    #                     self.add_edge(next_node, factors_node, flux_start=swap_flux, flux_end=swap_flux)
-    #                     remaining_flux -= swap_flux
-    #                     pending[factors_node][retained] += swap_flux
-    #                     push(factors_node)
-
-    #             if remaining_flux >= self.flux_error:
-    #                 pending[next_node][retained] += remaining_flux
-    #                 push(next_node)
-
-    #         del pending[node]
-
-
-    def _build_downstream_cache(self):
-        """
-        Pre-compute downstream nodes for all nodes in self.transitions.
-        Groups nodes by phase, sorts by position — O(N log N) once,
-        vs O(N) per _downstream_node call during traversal.
-        """
-        from collections import defaultdict
-
-        by_phase = defaultdict(list)
-        for node in self.transitions.nodes:
-            by_phase[node.phase].append(node)
-        for phase in by_phase:
-            by_phase[phase].sort(key=lambda n: n.position)
-
-        self._downstream_cache = {}
-        for node in self.transitions.nodes:
-            candidates = by_phase[node.phase]
-            # Binary search for first position > node.position
-            lo, hi = 0, len(candidates)
-            while lo < hi:
-                mid = (lo + hi) // 2
-                if candidates[mid].position <= node.position:
-                    lo = mid + 1
-                else:
-                    hi = mid
-            if lo < len(candidates):
-                self._downstream_cache[node] = candidates[lo]
-            else:
-                self._downstream_cache[node] = None
-
-
 
 
 
@@ -527,18 +378,18 @@ class RiboGraphFlux(RiboGraph):
         self._valid_in_out()
 
     @property
-    def ribopaths(self) -> list:
+    def ribopaths(self) -> list[list[RiboNode]]:
         """
         Returns a list of the paths with continued 40S association, each as a list of edge tuples.
         """
         paths = []
         for loading in self.successors(self.bulk_node):
-            for path in nx.all_simple_edge_paths(self, loading, self.bulk_node):
+            for path in nx.all_simple_paths(self, loading, self.bulk_node):
                 paths.append(path)
         return paths
     
     @property
-    def translons(self) -> list:
+    def translons(self) -> list[list[RiboNode]]:
         """
         Returns a list of all translons in the graph (continued 60S association) as a list of edge tuples
         """
@@ -546,19 +397,19 @@ class RiboGraphFlux(RiboGraph):
         for path in self.ribopaths:
             translon = False
             current_translon = []
-            for edge in path:
+            for node in path:
 
                 if translon:
-                    if edge[1].phase < 1:
+                    if node.phase < 1:
                         translon = False
                         translon_list.append(current_translon)
 
                     else:
-                        current_translon.append(edge)
+                        current_translon.append(node)
 
-                elif edge[0].phase > 0:
+                elif node.phase > 0:
                     translon = True
-                    current_translon.append(edge)
+                    current_translon.append(node)
 
         return list(set(translon_list))
 

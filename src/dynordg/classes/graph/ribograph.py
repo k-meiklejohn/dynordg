@@ -105,6 +105,8 @@ class RiboGraph(DiGraph):
                 break
 
             self.remove_nodes_from(zero_indegree)
+ 
+
 
     
 

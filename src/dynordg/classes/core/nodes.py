@@ -1,4 +1,34 @@
-class RiboNode(tuple):
+class State:
+    def __init__(self, phase, *args:str):
+
+        if not isinstance(phase, int):
+            raise ValueError(f'RiboNode phase must be int, got {phase}')
+        if phase < -1 or phase > 3:
+            raise ValueError(f'Phase must be int, between -1 and 3 inclusive, got {phase}')
+        for arg in args:
+            if not isinstance(arg, str):
+                raise ValueError
+        self.phase = phase
+        self.factors = args
+
+    def __repr__(self):
+        if len(self.factors):
+            return f"Phase:{self.phase} Factors:{self.factors}"
+        else:
+            return f"Phase:{self.phase}"
+        
+    def __eq__(self, value: State):
+        if not isinstance(value, State):
+            return False
+        phases = self.phase == value.phase
+        factors = self.factors == value.factors
+        return factors and phases
+
+
+
+        
+
+class RiboNode:
     """
     Special 2-tuple that refers to a position in simplified Ribosomal phase space, the first integer \
     refers to the nucleotide position on a transcript, while the second refers to the phase \
@@ -6,55 +36,46 @@ class RiboNode(tuple):
     where frame = position % 3 + 1
     
     """
-    def __new__(cls, *args):
-        if len(args) == 1 and isinstance(args[0], (tuple, RiboNode)):
-            coords = args[0]
-        elif len(args) >  1:
-            coords = args
-        else:
-            raise ValueError(f'RiboNode requires 2 ints or a length-2 tuple, got: {args}')
-
-        if not len(coords) >= 2:
-            raise ValueError(f'RiboNode tuple must be at least length 2, got length: {len(coords)}')
+    def __init__(self, position: int, state: State):
+        if not isinstance(position, int):
+            raise ValueError(f'RiboNode position must be int, got {position}')
 
 
-
-        if not isinstance(coords[0], int) or not isinstance(coords[1], int):
-            raise ValueError("RiboNode coordinates must be ints")
-
-
-        return super().__new__(cls, coords)
-
+        self.coords: RiboNode = (position, state.phase)
+        self.state = state
+        
     @property
     def position(self) -> int:
         """
         Nucleotide position of the node
         """
-        return self[0]
+        return self.coords[0]
 
     @property
     def phase(self) -> int:
         """
-        Simplified phase of the node -1 is not reading, 0 is scanning, 1, 2, 3 are translating in one of those frames
+        Simplified phase of the node -1 is in solution, 0 is scanning, 1, 2, 3 are translating in one of those frames
         """
-        return self[1]
+        return self.coords[1]
     
     @property
-    def factors(self) -> bool:
-        """
-        Subphase of node:
-        No Extra association = False
-        Ternary Complex Associated = True
-        Scanning factors associated = True
-        """
-        if len(self) > 2:
-            return self[2]
-        else:
-            return False
-
-    def __repr__(self):
-        return f"(Pos:{self.position}, Phase:{self.phase}, F:{self.factors})"
+    def factors(self) -> list[str]:
+        return self.state.factors
     
     @property
     def simple(self):
         return RiboNode(self.position, self.phase)
+    
+    def __repr__(self):
+        if len(self.state.factors):
+            return f"(Pos:{self.position}, Phase:{self.phase}, F:{self.factors})"
+        else:
+            return f"(Pos:{self.position}, Phase:{self.phase})"
+        
+    def __eq__(self, value: RiboNode):
+        if not isinstance(value, RiboNode):
+            return False
+        pos = self.position == value.position
+        phases = self.phase == value.phase
+        factors = self.factors == value.factors
+        return factors and phases and pos

@@ -2,6 +2,19 @@ from .nodes import RiboNode
 from .transitions import RiboTransition
 import re
 
+
+        
+class Transition:
+    def __init__(self, source_phase, target_phase, **kwargs):
+        pass
+class Event:
+    def __init__(self, position, probability, **kwargs):
+        pass
+
+
+    def transitions(self) -> list[RiboTransition]:
+        return RiboTransition()
+    
 class RiboEvent(tuple):
     """
     Tuple in the form position:int, type: str, probability: float, drop_probability: float
