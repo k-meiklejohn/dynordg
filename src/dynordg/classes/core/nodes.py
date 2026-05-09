@@ -1,15 +1,19 @@
 class State:
-    def __init__(self, phase: int, *args:str):
+    def __init__(self, phase: int, *factors:str):
 
         if not isinstance(phase, int):
             raise ValueError(f'RiboNode phase must be int, got {phase}')
         if phase < -1 or phase > 3:
             raise ValueError(f'Phase must be int, between -1 and 3 inclusive, got {phase}')
-        for arg in args:
+        for arg in factors:
             if not isinstance(arg, str):
                 raise ValueError
         self.phase = phase
-        self.factors: tuple[str,...] = tuple({*args})
+        self.factors: tuple[str,...] = tuple({*factors})
+
+    @property
+    def __members(self):
+        return (self.phase, self.factors)
 
     def __repr__(self):
         if len(self.factors):
@@ -18,25 +22,24 @@ class State:
             return f"Phase:{self.phase}"
         
     def __eq__(self, value):
-        if not isinstance(value, State):
+        if isinstance(value, State):
+            return self.__members == value.__members
+        else:
             return False
-        phases = self.phase == value.phase
-        factors = self.factors == value.factors
-        return factors and phases
     
     def __add__(self, *other):
         for arg in other:
             if not isinstance(other, str):
                 raise ValueError(f"+ not implemented between 'State' and '{type(arg).__name__}'")
         new_factors = self.factors + other
-        print(new_factors)
-        print(self.phase)
         return State(self.phase, *new_factors)
     
     def __hash__(self) -> int:
-        return hash((self.phase, self.factors))
+        return hash(self.__members)
     
     def __contains__(self, item):
+        if not isinstance(item, str):
+            return TypeError(f"'in' not supported between {type(item).__name__} and 'State")
         return item in self.factors
 
 

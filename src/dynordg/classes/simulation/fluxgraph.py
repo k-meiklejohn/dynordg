@@ -63,7 +63,7 @@ class RiboGraphFlux(RiboGraph):
         first loading node to the bulk node. Each path is a list of edge tuples (u, v).
     translons : list of list of tuple
         All sub-paths within ribopaths representing continuous 60S association
-        (i.e., active translation). Each translon is a list of edge tuples (u, v)
+        (i.e., active translation). Each translon is a list of RiboNodes
         where both nodes have phase > 0.
 
     Edge Data

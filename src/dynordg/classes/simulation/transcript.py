@@ -22,8 +22,6 @@ import Levenshtein as lv
 from ..core.transitions import RiboTransition
 from ...functions import start_score
 
-
-
 class Transcript(SeqRecord):
     """
     An RNA transcript record that holds information about RiboEvents.
