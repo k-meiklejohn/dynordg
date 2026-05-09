@@ -1,5 +1,5 @@
 from .nodes import RiboNode
-
+import numpy as np
 class RiboTransition(tuple):
     """
     A RiboTransition is an edge of a graph that shows a possible transition between phases, \
@@ -47,3 +47,4 @@ class RiboTransition(tuple):
 
     def __repr__(self):
         return f"(Source:{self.source}, Target:{self.target}, Probability:{self.probability})"
+    

@@ -1,19 +1,75 @@
-from .nodes import RiboNode
+from .nodes import RiboNode, State
 from .transitions import RiboTransition
 import re
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 
         
+@dataclass
 class Transition:
-    def __init__(self, source_phase, target_phase, **kwargs):
-        pass
+    source: RiboNode
+    target: RiboNode
+    weight: float
+
 class Event:
-    def __init__(self, position, probability, **kwargs):
-        pass
+    FRAME_DICT = {1:1,
+                  2:2,
+                  0:3}
+    
+    def __init__(self, position: int, probability: float):
+        if not isinstance(position, int):
+            raise ValueError(f"Event position must be type 'int', got '{type(position).__name__}'")
+        if not isinstance(probability, (float, int)):
+            raise ValueError(f"Event probability must be float or int, got '{type(probability).__name__}'")
+
+        self.position = position
+        self.probability = probability
+
+    @abstractmethod
+    def transitions(self) -> list[Transition]:
+        """Return transitions for this event"""
+        ...
+
+    @property
+    def frame(self):
+        return self.FRAME_DICT[self.position%3]
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(pos={self.position}, prob={self.probability})"
+
+class Reading(Event):
+    def __init__(self, position: int, probability: float):
+        if probability > 1 or probability <= 0:
+            raise ValueError(f"Event probability must be greater than 0 and not more than 1, got {probability}")
+        super().__init__(position, probability)
 
 
-    def transitions(self) -> list[RiboTransition]:
-        return RiboTransition()
+class Initiation(Reading):
+    def transitions(self) -> list[Transition]:
+        source = RiboNode(self.position, State(0, 'ternary_complex'))
+        target = RiboNode(self.position, State(self.frame, 'scanning_factors'))
+        return [Transition(source, target, self.probability)]
+    
+class Loading(Event):
+    def __init__(self, position: int, probability: float):
+        super().__init__(position, probability)
+        self.source = RiboNode(self.position, State(-1))
+
+class IRES(Loading):
+    def transitions(self) -> list[Transition]:
+        target = RiboNode(self.position, State(self.frame))
+        return [Transition(self.source, target, self.probability)]
+    
+class DropOff(Reading):
+    def __init__(self, position: int, probability: float):
+        super().__init__(position, probability)
+        self.target = RiboNode(self.position, State(-1))
+
+class Termination(DropOff):
+    def transitions(self) -> list[Transition]:
+        source = 
+        
     
 class RiboEvent(tuple):
     """
