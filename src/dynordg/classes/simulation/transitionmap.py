@@ -1,5 +1,6 @@
 from ..graph.ribograph import RiboGraph
-from ..core import RiboTransition, RiboNode
+from ..core import Transition, RiboNode
+
 
 class TransitionMap(RiboGraph):
     """
@@ -67,30 +68,17 @@ class TransitionMap(RiboGraph):
     def __init__(self, incoming_graph_data=None, **attr):
         super().__init__(incoming_graph_data, **attr)
         self._is_valid()
-        
-
-    def add_edge(self, u_of_edge, v_of_edge, **attr):
-        raise NotImplementedError("Use add_weighted_edge() instead.")
-
-    def add_edges_from(self, ebunch_to_add, **attr):
-        raise NotImplementedError("Use add_weighted_edge() instead.")
-
-    def add_weighted_edge(self, *args):
-        # Coerce to RiboTransition, which handles validation
-        if len(args) == 1 and isinstance(args[0], (tuple, RiboTransition)):
-            transition = RiboTransition(args[0])
-        elif len(args) == 3:
-            transition = RiboTransition(*args)
+    
+    def add_transition(self, transition: Transition):
+        if isinstance(transition, Transition):
+            super().add_edge(transition.source, transition.target, weight=transition.weight)
         else:
-            raise ValueError(f'add_weighted_edge requires a RiboTransition, a length-3 tuple, or 3 arguments, got: {args}')
+            raise TypeError(f"add_transition requires type 'Transition', got {type(transition).__name__}")
 
-        super().add_edge(transition.source, transition.target, weight=transition.probability)
-        self._is_valid()
+    def add_transitions_from(self, transitions):
+        for t in transitions:
+            self.add_transition(t)
 
-    def add_weighted_edges_from(self, ebunch_to_add):
-        """ebunch_to_add: iterable of RiboTransitions or (source, target, weight) tuples"""
-        for item in ebunch_to_add:
-            self.add_weighted_edge(item)
 
 
     def _is_valid_weight(self):
@@ -115,27 +103,44 @@ class TransitionMap(RiboGraph):
     def _is_valid(self):
         self._is_valid_weight()
 
-
-    def to_fluxgraph(self, half_life_translation = None, half_life_scanning = None):
-        from .fluxgraph import RiboGraphFlux
-        return RiboGraphFlux(skeleton=self, half_life_translation=half_life_translation, half_life_scanning=half_life_scanning)
-
     def downstream_node(self, node: RiboNode) -> RiboNode|None:
-        same_phase_ahead = [p.position for p in self.nodes 
-                            if p.position > node.position 
-                            and p.phase == node.phase]
-        if not same_phase_ahead:
-            return None
-        next_pos = min(same_phase_ahead)
         
-        
-        next_pos = min([p.position for p in self.nodes 
+        same_phase_ahead = sorted([p.position for p in self.nodes 
                             if p.position > node.position 
                             and p.phase == node.phase])
         
-        next_node = RiboNode(next_pos, 
-                        node.phase, 
-                        node.factors)
-        if node.phase != next_node.phase:
-            print(node, next_node, 'bing')
+        if not same_phase_ahead:
+            return None
+        print('==============DOWNSTREAM NODE===============')
+        print("node:",node)
+        print("ahead", same_phase_ahead)
+        next_pos = same_phase_ahead.pop(0)
+        next_nodes: list[RiboNode] = [n for n in self.nodes
+                      if n.position == next_pos
+                      and n.phase == node.phase]
+        print("NEXT NODES", next_nodes)
+        next_node = None
+        options: list[RiboNode] = []
+        while not next_node:
+            for opt in next_nodes:
+                print("----trying-------------")
+                print('option:',opt)
+                if len(opt.factors) and len(node.factors):
+                    if all([f in node.factors for f in opt.factors]):
+                        options.append(opt)
+                elif not len(opt.factors):
+                    options.append(opt)
+
+                    continue
+            if len(options):
+                next_node = max(options)
+                break
+            if not len(same_phase_ahead):
+                return None
+            next_pos = same_phase_ahead.pop(0)
+            next_nodes: list[RiboNode] = [n for n in self.nodes
+                        if n.position == next_pos
+                        and n.phase == node.phase]
+
+        print('out:', next_node)
         return next_node

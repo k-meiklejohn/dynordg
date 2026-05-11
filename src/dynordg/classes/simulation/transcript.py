@@ -16,10 +16,9 @@ from __future__ import annotations
 from collections import defaultdict
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
-from ..core.events import RiboEvent
+from ..core.events import Event, Initiation, Termination, Retention, LoadScanning, AllDrop, Transition
 from . import TransitionMap
 import Levenshtein as lv
-from ..core.transitions import RiboTransition
 from ...functions import start_score
 
 class Transcript(SeqRecord):
@@ -66,46 +65,25 @@ class Transcript(SeqRecord):
 
         super().__init__(Seq(raw), *args, **kwargs)
 
-        self.events= defaultdict(lambda: defaultdict(defaultdict[str, float|str|bool]))
-        self.events[0]['cap']['probability'] = 1
-        self.events[len(self.seq)]['end']['probability'] = 1  
+        self.events: list[Event] = []
+        self.add_event(LoadScanning(0, 1))
+        self.add_event(AllDrop(len(self), 1))
+ 
         if auto:
             self.auto_stop_starts()
     
-    def add_event(self, pos: int, type: str, prob: float = 1):
-
-        """
-        Add event to the transcript of with types: initiation, termination, ires, shift+/-n
-        (May also add cap, end but these are added anyway when transition_map is called)
-        For termination, prob refers to the probability of 40S retention, i.e. reinitaiton. For all others, \
-        it the probability is as normally expected.
-        """
-
-        if pos > len(self):
-            raise ValueError(f'Pos may not be greater than length({len(self)}), got {pos} )')
-        if prob > 1 or prob <= 0:
-            raise ValueError(f'Probability must be greater than 0 and not above 1, got {prob} ')
-        self.events[pos][type]['probability'] = prob
     
     def transition_map(self, weight_cutoff = 0.0) -> TransitionMap:
         
         """
         Returns a TransitionMap instance based on the events stored on the transcript
         """
-
-        list_of_events: list[RiboEvent] = []
-        list_of_transitions: list[RiboTransition] = []
-        for pos in self.events:
-            for event in self.events[pos]:
-                prob = self.events[pos][event]['probability']
-                if prob > weight_cutoff:
-                    list_of_events.append(RiboEvent(pos,
-                                                    event,
-                                                    prob))
-        for event in list_of_events:
-            list_of_transitions.extend(event.to_transition())
+        list_of_transitions: list[Transition] = []
+        for event in self.events:
+            if event.probability > weight_cutoff:
+                list_of_transitions.extend(event.transitions())
         tmap = TransitionMap()
-        tmap.add_weighted_edges_from(list_of_transitions)
+        tmap.add_transitions_from(list_of_transitions)
         return tmap
 
 
@@ -136,6 +114,8 @@ class Transcript(SeqRecord):
         
         return new
 
+    def add_event(self, event:Event):
+        self.events.append(event)
 
     def auto_stop_starts(self, cutoff=0.0, reinitiation_prob = 0.0):
         """
@@ -149,18 +129,18 @@ class Transcript(SeqRecord):
                 if 6 < i < len(self) - 5:
                     prob=start_score(sequence=str(self.seq[i-6:i+5]), aug=True)
                     if prob >= cutoff:
-                        self.add_event(i+1, 'initiation', prob)
+                        self.add_event(Initiation(i+1, prob))
                     
             elif lv.distance(codon, 'AUG') == 1:
                 if 4 < i < len(self) - 4:
                     prob = start_score(sequence=str(self.seq[i-4:i+4]), aug=False)
                     if prob >= cutoff:
-                        self.add_event(i+1, 'initiation', prob)
+                        self.add_event(Initiation(i+1, prob))
                         
             elif codon in ['UAG', 'UGA', 'UAA']:
-                self.add_event(i+1, 'termination', 1)
+                self.add_event(Termination(i+1, 1))
                 if reinitiation_prob > 0:
-                    self.add_event(i+1, 'retention', reinitiation_prob)
+                    self.add_event(Retention(i+1, reinitiation_prob))
 
   
 

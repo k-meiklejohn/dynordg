@@ -1,7 +1,7 @@
 from ..graph import RiboGraph
 from .transitionmap import TransitionMap
 from .skeleton import RiboSkeleton
-from ..core import RiboNode
+from ..core import RiboNode, State
 import networkx as nx
 import warnings
 from copy import deepcopy
@@ -165,7 +165,7 @@ class RiboGraphFlux(RiboGraph):
                 self._iterate_graph_topo(v, flux) 
                 self._normalize_flux()
 
-        self.collapse_unused_nodes()
+        # self.collapse_unused_nodes()
         self._is_valid()
 
 
@@ -212,7 +212,7 @@ class RiboGraphFlux(RiboGraph):
 
                     if v.phase != -1 and new_flux < self.flux_cutoff:
                         if node.phase >= 1:
-                            drop_node = RiboNode(u.position, -1, False)
+                            drop_node = RiboNode(u.position, state=State(-1))
                             self.add_edge(u, drop_node, flux=new_flux)
                             self.add_edge(drop_node, self.bulk_node, flux=new_flux)
                         continue
@@ -447,7 +447,6 @@ class RiboGraphFlux(RiboGraph):
 
         in_flux = 0
         for node in self.successors(self.bulk_node):
-            print(self[node])
             for _, _, flux in self.out_edges(node, data='flux'):
                 in_flux += flux
 
@@ -472,8 +471,8 @@ class RiboGraphFlux(RiboGraph):
             if u.simple == v.simple:
                 continue
             if v.phase == -1 and u.position != v.position and u.phase != -1:
-                out.add_edge(u.simple, RiboNode(v.position, u.phase), flux_start=flux, flux_end=0, decay=flux)
-                out.add_edge(RiboNode(v.position, u.phase), v.simple, flux_start=flux, flux_end=flux)
+                out.add_edge(u.simple, RiboNode(v.position, State(u.phase)), flux_start=flux, flux_end=0, decay=flux)
+                out.add_edge(RiboNode(v.position, State(u.phase)), v.simple, flux_start=flux, flux_end=flux)
     
             else:
                 out.add_edge(u.simple, v.simple,
@@ -489,6 +488,8 @@ class RiboGraphFlux(RiboGraph):
         to the bulk pool.  They carry no mRNA-positional information and
         produce degenerate geometry, so they are stripped before layout runs.
         """
+        dead = []
+
         dead = [(u, v) for u, v in self.edges
                 if u.phase == -1 and v.phase == -1]
         self.remove_edges_from(dead)

@@ -1,5 +1,4 @@
 from .nodes import RiboNode, State
-from .transitions import RiboTransition
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -71,7 +70,7 @@ class Reading(Event):
 
 class Initiation(Reading):
     def transitions(self) -> list[Transition]:
-        source = RiboNode(self.position, State(0, 'ternary_complex'))
+        source = RiboNode(self.position, State(0, 'ternary_complex', 'scanning_factors'))
         target = RiboNode(self.position, State(self.frame, 'scanning_factors'))
         return [Transition(source, target, self.probability)]
     
@@ -98,7 +97,7 @@ class Termination(DropOff):
 class Retention(Reading):
     def transitions(self):
         source = RiboNode(self.position, State(self.frame, 'scanning_factors'))
-        target = RiboNode(self.position, State(0))
+        target = RiboNode(self.position, State(0, 'scanning_factors'))
         return [Transition(source, target, self.probability )]
     
 class Frameshift(Reading):
@@ -116,7 +115,7 @@ class Frameshift(Reading):
     
 class LoadScanning(Loading):
     def transitions(self):
-        target = RiboNode(self.position, State(0, 'scanning_factors'))
+        target = RiboNode(self.position, State(0, 'scanning_factors', 'ternary_complex'))
         return [Transition(self.source, target, self.probability)]
     
 class AllDrop(DropOff):

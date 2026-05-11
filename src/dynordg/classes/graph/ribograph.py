@@ -1,4 +1,4 @@
-from ..core import  RiboNode
+from ..core import  RiboNode, State
 from networkx import DiGraph
 
 class RiboGraph(DiGraph):
@@ -8,7 +8,7 @@ class RiboGraph(DiGraph):
 
     def __init__(self, incoming_graph_data = None, **attr):
         super().__init__(incoming_graph_data, **attr)
-        self.bulk_node = RiboNode((-1,-1, False))
+        self.bulk_node = RiboNode(-1,State(-1))
         self.add_node(self.bulk_node)
 
 
@@ -17,11 +17,7 @@ class RiboGraph(DiGraph):
         """
         Add a new RiboNode to the graph
         """
-        if isinstance(node_for_adding, RiboNode):
-            pass
-        elif isinstance(node_for_adding, tuple):
-            node_for_adding = RiboNode(node_for_adding)
-        else:
+        if not isinstance(node_for_adding, RiboNode):
             raise TypeError(f"Ribograph only accepts RiboNodes or RiboNode-like tuples, got {type(node_for_adding).__name__!r}")
         super().add_node(node_for_adding, **attr)
     
@@ -58,8 +54,7 @@ class RiboGraph(DiGraph):
                     merged[key] = new_val
                 elif new_val is None:
                     merged[key] = existing_val
-                elif key.startswith(('flux', 'decay', 'weight')): #this may change
-                    print(existing_val, new_val)
+                elif key.startswith(('flux', 'weight')): #this may change
                     merged[key] = existing_val + new_val
                 else:
                     merged[key] = new_val  # overwrite non-flux attributes
@@ -105,6 +100,8 @@ class RiboGraph(DiGraph):
                 break
 
             self.remove_nodes_from(zero_indegree)
+
+
  
 
 
