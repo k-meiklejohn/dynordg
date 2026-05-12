@@ -7,6 +7,9 @@ import warnings
 from copy import deepcopy
 from collections import defaultdict
 import heapq
+import networkx as nx
+import matplotlib.pyplot as plt
+
 
 class RiboGraphFlux(RiboGraph):
     """
@@ -123,7 +126,7 @@ class RiboGraphFlux(RiboGraph):
         self.transitions = skeleton
         self.begun = False
         if incoming_graph_data is not None:
-            raise ValueError('Incoming graph data must be left empty, graph is calculated from transition_map')
+            raise ValueError('Incoming graph data must be left empty, graph is calculated from skeleton')
         self.weight_cutoff = weight_cutoff
         self.flux_cutoff = flux_cutoff
         self.flux_error = 0.000000000000001
@@ -133,6 +136,8 @@ class RiboGraphFlux(RiboGraph):
     
     def construct(self):
         self._iterate_graph_topo(self.transitions.bulk_node, 1)
+
+
         self._normalize_flux()
         self._is_valid()
 
@@ -142,10 +147,10 @@ class RiboGraphFlux(RiboGraph):
         start_flux: float,
         start_retained: int = 0,
     ):
-        self.transitions.remove_node(self.transitions.bulk_node)
-        topo_order = list(nx.topological_sort(self.transitions))
-
-        # pending[node][retained] = accumulated flux
+        DAG = deepcopy(self.transitions)
+        DAG.remove_node(DAG.bulk_node)
+        topo_order = list(nx.topological_sort(DAG))
+        topo_order=[self.transitions.bulk_node] + topo_order
         pending: dict[RiboNode, dict[int, float]] = defaultdict(lambda: defaultdict(float))
         pending[start_node][start_retained] += start_flux
 
@@ -161,33 +166,23 @@ class RiboGraphFlux(RiboGraph):
             in_degree_remaining[target] -= 1
 
         for node in topo_order:
+
+
             if in_degree_remaining.get(node, 0) > 0 or not pending.get(node):
                 continue
-
             for retained, flux in list(pending[node].items()):
+
                 if flux < self.flux_error:
                     continue
-
                 for u, v, w in self.transitions.out_edges(node, data="weight"):
                     new_flux = flux * w
 
                     # Below cutoff — drop the ribosome if translating
-                    if v.phase != -1 and new_flux < self.flux_cutoff:
-                        if node.phase >= 1:
-                            drop_node = RiboNode(u.position, state=State(-1))
-                            self.add_edge(u, drop_node, flux=new_flux)
-                            self.add_edge(drop_node, self.bulk_node, flux=new_flux)
-                        continue
 
                     next_retained = retained + 1 if self.is_retention(u, v) else retained
                     self.add_edge(u, v, flux=new_flux)
 
-                    if v.phase == -1:
-                        self.add_edge(v, self.bulk_node, flux=new_flux)
-                        continue
-
                     dispatch(v, new_flux, next_retained)
-
             del pending[node]
 
 

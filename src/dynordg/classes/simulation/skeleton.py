@@ -1,7 +1,8 @@
 from ..graph import RiboGraph
 from .transitionmap import TransitionMap
 from ..core import RiboNode, Transition, State
-
+import networkx as nx
+import matplotlib.pyplot as plt
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
@@ -102,7 +103,7 @@ class TernaryComplexAssociation(FactorBehaviour):
 
     def transitions(self, u: RiboNode, v: RiboNode, weight: float) -> Transition:
         prop = weight * self.fraction(u, v)
-        return Transition(v, RiboNode(v.position, u.state + "ternary_complex"), prop)
+        return Transition(u, RiboNode(v.position, u.state + "ternary_complex"), prop)
 
 
 class ScanningFactorDissociation(FactorBehaviour):
@@ -120,9 +121,9 @@ class ScanningFactorDissociation(FactorBehaviour):
             return 0.0
         return 1 - 0.5 ** (abs(u.position - v.position) / self.half_life)
 
-    def transitions(self, u: RiboNode, v: RiboNode, weight: float) -> list[Transition]:
+    def transitions(self, u: RiboNode, v: RiboNode, weight: float) -> Transition:
         lost = weight * self.fraction(u, v)
-        return [Transition(v, RiboNode(v.position, u.state - "scanning_factors"), lost)]
+        return Transition(u, RiboNode(v.position, u.state - "scanning_factors"), lost)
 
 
 class RiboSkeleton(TransitionMap):
@@ -177,24 +178,29 @@ class RiboSkeleton(TransitionMap):
             return
 
         tnode = self.next_node.get(node)
+
         if tnode is None:
             drop = RiboNode(node.position, State(-1))
             self.add_transition(Transition(node, drop, self.cont_weight[node]))
             self.add_transition(Transition(drop, self.bulk_node, 1))
             return
 
-
         remaining_weight = self.cont_weight[node]
+
         if self.behaviours:
-            for behavior in self.behaviours:
-                if behavior.applies(node, tnode):
-                    t = behavior.transitions(node, tnode, remaining_weight)
+            for behaviour in self.behaviours:
+                if behaviour.applies(node, tnode):
+                    t = behaviour.transitions(node, tnode, remaining_weight)
                     if t.weight > 0:
                         remaining_weight -= t.weight
                         self.add_transition(t)
+                        if t.target.phase == -1:
+                            self.add_transition(Transition(t.target, self.bulk_node, 1))
+                        elif t.target not in self.transitions.nodes:
+                            # New node introduced by this behaviour — extend the graph from it
+                            self.next_node[t.target] = self.transitions.downstream_node(t.source) 
+                            self.cont_weight[t.target] = 1
+                            self._attach_node(t.target, is_source=True)
 
-                    if t.target.phase == -1:
-                        self.add_transition(Transition(t.target, self.bulk_node, 1))
-                    
         if remaining_weight:
             self.add_transition(Transition(node, tnode, remaining_weight))
