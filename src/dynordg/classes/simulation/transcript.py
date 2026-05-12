@@ -14,6 +14,7 @@ Custom additions:
 
 from __future__ import annotations
 from collections import defaultdict
+from typing import Any, NoReturn
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from ..core.events import Event, Initiation, Termination, Retention, LoadScanning, AllDrop, Transition
@@ -49,6 +50,7 @@ class Transcript(SeqRecord):
         name: str = "<unknown name>",
         description: str = "<unknown description>",
         auto = False,
+        blank = False,
         *args,
         **kwargs,
     ) -> None:
@@ -65,9 +67,10 @@ class Transcript(SeqRecord):
 
         super().__init__(Seq(raw), *args, **kwargs)
 
-        self.events: list[Event] = []
-        self.add_event(LoadScanning(0, 1))
-        self.add_event(AllDrop(len(self), 1))
+        self._events: list[Event] = []
+        if not blank:
+            self.add_event(LoadScanning(0, 1))
+            self.add_event(AllDrop(len(self), 1))
  
         if auto:
             self.auto_stop_starts()
@@ -79,7 +82,7 @@ class Transcript(SeqRecord):
         Returns a TransitionMap instance based on the events stored on the transcript
         """
         list_of_transitions: list[Transition] = []
-        for event in self.events:
+        for event in self._events:
             if event.probability > weight_cutoff:
                 list_of_transitions.extend(event.transitions())
         tmap = TransitionMap()
@@ -90,9 +93,6 @@ class Transcript(SeqRecord):
     # ------------------------------------------------------------------
     # Dunder helpers
     # ------------------------------------------------------------------
-
-    def __len__(self) -> int:
-        return len(self.seq)
 
     def __str__(self) -> str:
         preview = str(self.seq)[:40]
@@ -114,8 +114,24 @@ class Transcript(SeqRecord):
         
         return new
 
+
+    # Public access to event list fo the transcript
     def add_event(self, event:Event):
-        self.events.append(event)
+        """
+        Add an event to the transcript, if an identical event exists already at that position,
+        it will be silently removed.
+        """
+        self.remove_event(event)
+        self._events.append(event)
+
+    def remove_event(self, event: Event):
+        """
+        Remove an Event from the transcript with the same type and position as the input.
+        """
+        for e in self._events:
+            if e.type == event.type and e.position == event.position:
+                self._events.remove(e)
+
 
     def auto_stop_starts(self, cutoff=0.0, reinitiation_prob = 0.0):
         """
@@ -124,23 +140,24 @@ class Transcript(SeqRecord):
         Cutoff determines the minimum probability of initiation of non-AUG codons in order to be considered.
         """
         for i in range(len(self)):
-            codon = str(self.seq[i:i+3])
-            if codon == 'AUG':
-                if 6 < i < len(self) - 5:
-                    prob=start_score(sequence=str(self.seq[i-6:i+5]), aug=True)
-                    if prob >= cutoff:
-                        self.add_event(Initiation(i+1, prob))
-                    
-            elif lv.distance(codon, 'AUG') == 1:
-                if 4 < i < len(self) - 4:
-                    prob = start_score(sequence=str(self.seq[i-4:i+4]), aug=False)
-                    if prob >= cutoff:
-                        self.add_event(Initiation(i+1, prob))
+            if self.seq:
+                codon = str(self.seq[i:i+3])
+                if codon == 'AUG':
+                    if 6 < i < len(self) - 5:
+                        prob=start_score(sequence=str(self.seq[i-6:i+5]), aug=True)
+                        if prob >= cutoff:
+                            self.add_event(Initiation(i+1, prob))
                         
-            elif codon in ['UAG', 'UGA', 'UAA']:
-                self.add_event(Termination(i+1, 1))
-                if reinitiation_prob > 0:
-                    self.add_event(Retention(i+1, reinitiation_prob))
+                elif lv.distance(codon, 'AUG') == 1:
+                    if 4 < i < len(self) - 4:
+                        prob = start_score(sequence=str(self.seq[i-4:i+4]), aug=False)
+                        if prob >= cutoff:
+                            self.add_event(Initiation(i+1, prob))
+                            
+                elif codon in ['UAG', 'UGA', 'UAA']:
+                    self.add_event(Termination(i+1, 1))
+                    if reinitiation_prob > 0:
+                        self.add_event(Retention(i+1, reinitiation_prob))
 
   
 

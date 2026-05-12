@@ -103,44 +103,64 @@ class TransitionMap(RiboGraph):
     def _is_valid(self):
         self._is_valid_weight()
 
-    def downstream_node(self, node: RiboNode) -> RiboNode|None:
-        
-        same_phase_ahead = sorted([p.position for p in self.nodes 
-                            if p.position > node.position 
-                            and p.phase == node.phase])
-        
-        if not same_phase_ahead:
-            return None
-        print('==============DOWNSTREAM NODE===============')
-        print("node:",node)
-        print("ahead", same_phase_ahead)
-        next_pos = same_phase_ahead.pop(0)
-        next_nodes: list[RiboNode] = [n for n in self.nodes
-                      if n.position == next_pos
-                      and n.phase == node.phase]
-        print("NEXT NODES", next_nodes)
-        next_node = None
-        options: list[RiboNode] = []
-        while not next_node:
-            for opt in next_nodes:
-                print("----trying-------------")
-                print('option:',opt)
-                if len(opt.factors) and len(node.factors):
-                    if all([f in node.factors for f in opt.factors]):
-                        options.append(opt)
-                elif not len(opt.factors):
-                    options.append(opt)
+    def downstream_node(self, node: RiboNode) -> RiboNode | None:
+        """Return the nearest downstream node in the same phase whose factors are a subset of node's."""
+        positions = sorted(
+            p.position for p in self.nodes
+            if p.position > node.position and p.phase == node.phase
+        )
 
-                    continue
-            if len(options):
-                next_node = max(options)
-                break
-            if not len(same_phase_ahead):
-                return None
-            next_pos = same_phase_ahead.pop(0)
-            next_nodes: list[RiboNode] = [n for n in self.nodes
-                        if n.position == next_pos
-                        and n.phase == node.phase]
+        for pos in positions:
+            candidates: list[RiboNode] = [n for n in self.nodes if n.position == pos and n.phase == node.phase]
 
-        print('out:', next_node)
-        return next_node
+            options = [
+                opt for opt in candidates
+                if not opt.factors or all(f in node.factors for f in opt.factors)
+            ]
+
+            if options:
+                return max(options)
+
+        return None
+
+    # def downstream_node(self, node: RiboNode) -> RiboNode|None:
+        
+    #     same_phase_ahead = sorted([p.position for p in self.nodes 
+    #                         if p.position > node.position 
+    #                         and p.phase == node.phase])
+        
+    #     if not same_phase_ahead:
+    #         return None
+    #     print('==============DOWNSTREAM NODE===============')
+    #     print("node:",node)
+    #     print("ahead", same_phase_ahead)
+    #     next_pos = same_phase_ahead.pop(0)
+    #     next_nodes: list[RiboNode] = [n for n in self.nodes
+    #                   if n.position == next_pos
+    #                   and n.phase == node.phase]
+    #     print("NEXT NODES", next_nodes)
+    #     next_node = None
+    #     options: list[RiboNode] = []
+    #     while not next_node:
+    #         for opt in next_nodes:
+    #             print("----trying-------------")
+    #             print('option:',opt)
+    #             if len(opt.factors) and len(node.factors):
+    #                 if all([f in node.factors for f in opt.factors]):
+    #                     options.append(opt)
+    #             elif not len(opt.factors):
+    #                 options.append(opt)
+
+    #                 continue
+    #         if len(options):
+    #             next_node = max(options)
+    #             break
+    #         if not len(same_phase_ahead):
+    #             return None
+    #         next_pos = same_phase_ahead.pop(0)
+    #         next_nodes: list[RiboNode] = [n for n in self.nodes
+    #                     if n.position == next_pos
+    #                     and n.phase == node.phase]
+
+    #     print('out:', next_node)
+    #     return next_node

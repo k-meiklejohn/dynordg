@@ -16,7 +16,7 @@ class Event:
                   2:2,
                   0:3}
     
-    def __init__(self, position: int, probability: float):
+    def __init__(self, position: int, probability: float = 1):
         if not isinstance(position, int):
             raise TypeError(f"Event position must be type 'int', got '{type(position).__name__}'")
         if not isinstance(probability, (float, int)):
