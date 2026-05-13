@@ -1,7 +1,6 @@
 from ..graph.ribograph import RiboGraph
 from ..core import Transition, RiboNode
 
-
 class TransitionMap(RiboGraph):
     """
     A validated directed graph representing the transition probabilities between
@@ -112,15 +111,12 @@ class TransitionMap(RiboGraph):
 
         for pos in positions:
             candidates: list[RiboNode] = [n for n in self.nodes if n.position == pos and n.phase == node.phase]
-            print('=======================', node, '====================')
-            print('candidates:',candidates)
             options = [
                 opt for opt in candidates
                 if not opt.factors or all([f in node.factors for f in opt.factors])
             ]
 
             if options:
-                print('options:',options)
                 return max(options)
 
         return None

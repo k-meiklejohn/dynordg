@@ -17,7 +17,7 @@ from collections import defaultdict
 from typing import Any, NoReturn
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
-from ..core.events import Event, Initiation, Termination, Retention, LoadScanning, AllDrop, Transition
+from ..core.events import Event, Initiation, Termination, Retention, LoadScanning, AllDrop, Transition, Pipe
 from . import TransitionMap
 import Levenshtein as lv
 from ...functions import start_score
@@ -75,19 +75,17 @@ class Transcript(SeqRecord):
         if auto:
             self.auto_stop_starts()
     
-    
-    def transition_map(self, weight_cutoff = 0.0) -> TransitionMap:
+    @property
+    def pipes(self, weight_cutoff = 0.0) -> list[Pipe]:
         
         """
         Returns a TransitionMap instance based on the events stored on the transcript
         """
-        list_of_transitions: list[Transition] = []
+        pipe_list: list[Pipe] = []
         for event in self._events:
             if event.probability > weight_cutoff:
-                list_of_transitions.extend(event.transitions())
-        tmap = TransitionMap()
-        tmap.add_transitions_from(list_of_transitions)
-        return tmap
+                pipe_list.append(event.pipe)
+        return pipe_list
 
 
     # ------------------------------------------------------------------

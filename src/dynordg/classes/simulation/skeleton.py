@@ -1,6 +1,7 @@
 from ..graph import RiboGraph
 from .transitionmap import TransitionMap
 from ..core import RiboNode, Transition, State
+from ..core.events import Pipe
 import networkx as nx
 import matplotlib.pyplot as plt
 from abc import ABC, abstractmethod
@@ -125,82 +126,220 @@ class ScanningFactorDissociation(FactorBehaviour):
         lost = weight * self.fraction(u, v)
         return Transition(u, RiboNode(v.position, u.state - "scanning_factors"), lost)
 
-
 class RiboSkeleton(TransitionMap):
 
     def __init__(
         self,
-        transition_map: TransitionMap,
+        pipelist: list[Pipe],
         incoming_graph_data=None,
         behaviours: list[FactorBehaviour] | None = None,
         **attr,
     ):
         super().__init__(incoming_graph_data, **attr)
-        self.transitions = transition_map
-        self.cont_weight = self._continuation_weights()
-        self.next_node = {
-            n: self.transitions.downstream_node(n)
-            for n in self.transitions.nodes
-            if n.phase != -1
-        }
-
-        self.behaviours: list[FactorBehaviour]|None = sorted(behaviours) if behaviours else None
-
+        self.pipelist = pipelist
+        print('pipelist:', self.pipelist)
+        self.stack: list[tuple[RiboNode, float]] = []
+        self.behaviours: list[FactorBehaviour] | None = sorted(behaviours) if behaviours else None
+        self.visited: list[RiboNode] = []
         self._construct()
 
     def _construct(self):
+        for pipe in self.pipelist:
+            if isinstance(pipe.input_phase, int) and pipe.input_phase == -1:
+                factors = pipe.required_factors or []
+                source = RiboNode(pipe.position, State(pipe.input_phase, *factors))
+                target = pipe.target(source.state)
+                self.add_transition(Transition(self.bulk_node, source, 1))
+                self.add_transition(Transition(source, target, pipe.probability))
+                self.build_graph(target)
+        self._is_valid()
 
-        for u, v, w in self.transitions.edges(data="weight"):
-            self.add_transition(Transition(u, v, w))
-            self._attach_node(u, is_source=True)
-            self._attach_node(v, is_source=False)
+    def build_graph(self, starting_node: RiboNode):
+        self.stack.append((starting_node, 1))
+        while self.stack:
+            node, weight = self.stack.pop()
+            self.visited.append(node)
 
-        self.remove_all_indegree_zero_nodes()
+            pipes = self.next_pipes(node)
+            if not pipes:
+                raise RuntimeError(
+                    f"Continue flux at node: {node} runs to infinity (no downstream pipes)"
+                )
 
-        
+            node_at_pipe = RiboNode(pipes[0].position, node.state)
+            remaining_weight = weight
 
+            if self.behaviours:
+                for behaviour in self.behaviours:
+                    if behaviour.applies(node, node_at_pipe):
+                        f_trans = behaviour.transitions(node, node_at_pipe, remaining_weight)
+                        if f_trans.weight > 0:
+                            remaining_weight -= f_trans.weight
+                            self.add_transition(f_trans)
+                            self._expand_node(f_trans.target, pipes)
 
-    def _continuation_weights(self) -> dict[RiboNode,float]:
-        """Weight remaining after all explicit out-edges (i.e. the 'continue' share)."""
-        weights = {}
-        for node in self.transitions.nodes:
-            out_total = sum(w for _, _, w in self.transitions.out_edges(node, data="weight"))
-            weights[node] = 1 - out_total
-        return weights
-    
-    def _attach_node(self, node: RiboNode, is_source: bool):
-        """Wire up same_phase transitions for a single node."""
+            if remaining_weight > 0:
+                self.add_transition(Transition(node, node_at_pipe, remaining_weight))
+                left_over = self._pipe_out(node_at_pipe, pipes, weight_scale=1)
+                if left_over > 0:
+                    self._add_to_stack(node_at_pipe, left_over)
+
+    def _expand_node(self, node: RiboNode, pipes: list[Pipe]):
+        """Route a node either back to bulk (phase == -1) or through downstream pipes."""
         if node.phase == -1:
-            if is_source:
-                self.add_transition(Transition(self.bulk_node, node, 1))
+            self.add_transition(Transition(node, self.bulk_node, 1))
+            return
+        unpiped = self._pipe_out(node, pipes, weight_scale=1)
+        if unpiped > 0:
+            self._add_to_stack(node, unpiped)
+
+    def _pipe_out(self, node: RiboNode, pipes: list[Pipe], weight_scale: float) -> float:
+        """
+        Add transitions from node through any pipes whose enter() condition is met.
+        Returns the remaining (unpiped) weight fraction.
+        """
+        unpiped = weight_scale
+        viable = [p for p in pipes if p.enter(node.state)]
+        for pipe in reversed(sorted(viable)):
+            if unpiped < 0:
+                break
+            pipe_target = pipe.target(node.state)
+            self.add_transition(
+                Transition(node, pipe_target, pipe.probability * unpiped)
+            )
+            unpiped -= pipe.probability * unpiped
+            if pipe_target.phase == -1:
+                self.add_transition(Transition(pipe_target, self.bulk_node, 1))
             else:
-                self.add_transition(Transition(node, self.bulk_node, 1))
-            return
+                self._add_to_stack(pipe_target, 1)
+        return unpiped
 
-        tnode = self.next_node.get(node)
+    def _add_to_stack(self, node: RiboNode, weight: float):
+        if node not in self.visited:
+            self.stack.append((node, weight))
 
-        if tnode is None:
-            drop = RiboNode(node.position, State(-1))
-            self.add_transition(Transition(node, drop, self.cont_weight[node]))
-            self.add_transition(Transition(drop, self.bulk_node, 1))
-            return
+    def next_pipes(self, node: RiboNode) -> list[Pipe] | None:
+        def pipe_matches(pipe: Pipe) -> bool:
+            return (
+                pipe.input_phase == node.phase
+                or pipe.input_phase is None
+                or pipe.output_phase == node.phase
+            )
 
-        remaining_weight = self.cont_weight[node]
+        downstream_positions = [
+            pipe.position for pipe in self.pipelist
+            if pipe_matches(pipe) and pipe.position > node.position
+        ]
+        if not downstream_positions:
+            return None
 
-        if self.behaviours:
-            for behaviour in self.behaviours:
-                if behaviour.applies(node, tnode):
-                    t = behaviour.transitions(node, tnode, remaining_weight)
-                    if t.weight > 0:
-                        remaining_weight -= t.weight
-                        self.add_transition(t)
-                        if t.target.phase == -1:
-                            self.add_transition(Transition(t.target, self.bulk_node, 1))
-                        elif t.target not in self.transitions.nodes:
-                            # New node introduced by this behaviour — extend the graph from it
-                            self.next_node[t.target] = self.transitions.downstream_node(t.source) 
-                            self.cont_weight[t.target] = 1
-                            self._attach_node(t.target, is_source=True)
+        min_pos = min(downstream_positions)
+        return [
+            pipe for pipe in self.pipelist
+            if pipe_matches(pipe) and pipe.position == min_pos
+        ]
+    
 
-        if remaining_weight:
-            self.add_transition(Transition(node, tnode, remaining_weight))
+# class RiboSkeleton(TransitionMap):
+
+#     def __init__(
+#         self,
+#         pipelist: list[Pipe],
+#         incoming_graph_data=None,
+#         behaviours: list[FactorBehaviour] | None = None,
+#         **attr,
+#     ):
+#         super().__init__(incoming_graph_data, **attr)
+#         self.pipelist = pipelist
+
+
+#         self.stack: list[tuple[RiboNode, float]] = []
+#         self.behaviours: list[FactorBehaviour]|None = sorted(behaviours) if behaviours else None
+#         self.visited: list[RiboNode] = []
+#         self._construct()
+
+#     def _construct(self):
+#         for pipe in self.pipelist:
+#             if isinstance(pipe.input_phase, int) and pipe.input_phase == -1:
+#               factors = pipe.required_factors if pipe.required_factors else []
+#               source = RiboNode(pipe.position, State(pipe.input_phase, *factors))
+#               target = pipe.target(source.state)
+#               from_bulk = Transition(self.bulk_node, source, 1)
+#               self.add_transition(from_bulk)
+#               self.add_transition(Transition(source, target, pipe.probability))
+#               self.build_graph(target)
+#         self._is_valid()
+
+#     def build_graph(self, starting_node: RiboNode):
+#         self.stack.append((starting_node, 1))
+#         while self.stack:
+#             node, weight = self.stack.pop()
+#             self.visited.append(node)
+#             pipes = self.next_pipes(node)
+#             if not pipes:
+#                 raise RuntimeError(f"Continue flux at node: {node} runs to infinity (no downstream pipes)")
+#             remaining_weight = weight
+
+#             node_at_pipe = RiboNode(pipes[0].position, node.state)
+#             if self.behaviours:
+#                 for behaviour in self.behaviours:
+#                     if behaviour.applies(node, node_at_pipe):
+#                         f_trans = behaviour.transitions(node, node_at_pipe, remaining_weight)
+#                         if f_trans.weight > 0:
+#                             remaining_weight -= f_trans.weight
+#                             self.add_transition(f_trans)
+#                             if f_trans.target.phase == -1:
+#                                 self.add_transition(Transition(f_trans.target, self.bulk_node, 1))
+#                             else:
+#                                 unpiped_weight = 1
+#                                 for pipe in pipes:
+#                                     if pipe.enter(f_trans.target.state):
+#                                         pipe_target = pipe.target(f_trans.target.state)
+#                                         self.add_transition(Transition(f_trans.target,
+#                                                                     pipe_target,
+#                                                                     pipe.probability))
+#                                         unpiped_weight -= pipe.probability
+#                                         if pipe_target.phase == -1:
+#                                             self.add_transition(Transition(pipe_target, self.bulk_node, 1))
+#                                         else:  
+#                                             self._add_to_stack(pipe_target, 1)
+#                             if unpiped_weight > 0:
+#                                 self._add_to_stack(f_trans.target, unpiped_weight)
+#             if remaining_weight > 0:
+#                 self.add_transition(Transition(node, node_at_pipe, remaining_weight))
+#                 unpiped_weight = 1
+#                 viable_pipes =  [pipe for pipe in pipes if pipe.enter(node_at_pipe.state)]
+#                 if len(viable_pipes):
+#                     for pipe in reversed((viable_pipes)):
+#                         pipe_target = pipe.target(node_at_pipe.state)
+#                         pipe_transition = Transition(node_at_pipe,
+#                                                     pipe_target,
+#                                                     pipe.probability*unpiped_weight)
+#                         self.add_transition(pipe_transition)
+#                         unpiped_weight -= pipe.probability*unpiped_weight
+#                         if pipe_target.phase == -1:
+#                             self.add_transition(Transition(pipe_target, self.bulk_node, 1))
+#                         else:  
+#                             self._add_to_stack(pipe_target, 1)
+#                 if unpiped_weight > 0:
+#                     self._add_to_stack(node_at_pipe, unpiped_weight)
+
+
+
+#     def _add_to_stack(self, node:RiboNode, weight: float):
+#         if node not in self.visited:
+#             self.stack.append((node, weight))
+
+#     def next_pipes(self, node: RiboNode) -> list[Pipe]|None:
+#         same_phase = [pipe.position for pipe in self.pipelist
+#                       if (pipe.input_phase == node.phase or pipe.input_phase == None or pipe.output_phase == node.phase)
+#                       and pipe.position > node.position]
+#         if not len(same_phase):
+#             return None
+#         min_pos = min(same_phase)
+
+#         return [pipe for pipe in self.pipelist 
+#                 if (pipe.input_phase == node.phase 
+#                     or pipe.input_phase==None 
+#                     or pipe.output_phase==node.phase) 
+#                     and pipe.position == min_pos]

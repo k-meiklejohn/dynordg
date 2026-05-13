@@ -27,18 +27,26 @@ class State:
         else:
             return False
     
-    def __add__(self, *other):
+    def __add__(self, other):
+        if isinstance(other, str):
+            other = (other,)
+        elif not isinstance(other, tuple):
+            raise ValueError(f"+ not implemented between 'State' and '{type(other).__name__}'")
         for arg in other:
             if not isinstance(arg, str):
-                raise ValueError(f"+ not implemented between 'State' and '{type(arg).__name__}'")
+                raise ValueError(f"+ not implemented between 'State' and 'tuple[{type(arg).__name__}]'")
         new_factors = self.factors + other
         return State(self.phase, *new_factors)
-    
-    def __sub__(self, *other):
+
+    def __sub__(self, other):
+        if isinstance(other, str):
+            other = (other,)
+        elif not isinstance(other, tuple):
+            raise ValueError(f"- not implemented between 'State' and '{type(other).__name__}'")
         new_factors = self.factors
         for arg in other:
             if not isinstance(arg, str):
-                raise ValueError(f"+ not implemented between 'State' and '{type(arg).__name__}'")
+                raise ValueError(f"- not implemented between 'State' and '{type(arg).__name__}'")
             new_factors = tuple(item for item in new_factors if item != arg)
         return State(self.phase, *new_factors)
     
@@ -84,7 +92,10 @@ class RiboNode:
 
         self.position:int = position
         self.state:State = state
-        self.__members = (self.position, self.state)
+    
+    @property
+    def __members(self):
+        return (self.position, self.state)
         
 
 

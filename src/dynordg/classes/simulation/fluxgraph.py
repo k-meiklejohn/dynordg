@@ -10,6 +10,8 @@ import heapq
 import networkx as nx
 import matplotlib.pyplot as plt
 
+from collections import deque, defaultdict
+
 
 class RiboGraphFlux(RiboGraph):
     """
@@ -136,149 +138,91 @@ class RiboGraphFlux(RiboGraph):
     
     def construct(self):
         self._iterate_graph_topo(self.transitions.bulk_node, 1)
-
-
         self._normalize_flux()
         self._is_valid()
 
-    def _iterate_graph_topo(
-        self,
-        start_node: RiboNode,
-        start_flux: float,
-        start_retained: int = 0,
-    ):
-        DAG = deepcopy(self.transitions)
-        DAG.remove_node(DAG.bulk_node)
-        topo_order = list(nx.topological_sort(DAG))
-        topo_order=[self.transitions.bulk_node] + topo_order
-        pending: dict[RiboNode, dict[int, float]] = defaultdict(lambda: defaultdict(float))
-        pending[start_node][start_retained] += start_flux
+    # def _iterate_graph_topo(
+    #     self,
+    #     start_node: RiboNode,
+    #     start_flux: float,
+    #     start_retained: int = 0,
+    # ):
+    #     DAG = deepcopy(self.transitions)
+    #     DAG.remove_node(DAG.bulk_node)
+    #     topo_order = list(nx.topological_sort(DAG))
+    #     topo_order=[self.transitions.bulk_node] + topo_order
+    #     pending: dict[RiboNode, dict[int, float]] = defaultdict(lambda: defaultdict(float))
+    #     pending[start_node][start_retained] += start_flux
 
-        # Only process a node once all upstream flux has arrived
-        in_degree_remaining = {node:self.transitions.in_degree(node) for node in self.transitions.nodes}
-        in_degree_remaining[start_node] = 0
+    #     # Only process a node once all upstream flux has arrived
+    #     in_degree_remaining = {node:DAG.in_degree(node) for node in DAG}
+    #     in_degree_remaining[start_node] = 0
 
-        def dispatch(target: RiboNode, flux: float, retained: int):
-            """Accumulate flux into target and mark one upstream sender as done."""
-            if target == self.bulk_node:
-                return
-            pending[target][retained] += flux
-            in_degree_remaining[target] -= 1
+    #     def dispatch(target: RiboNode, flux: float, retained: int):
+    #         """Accumulate flux into target and mark one upstream sender as done."""
+    #         if target == self.bulk_node:
+    #             return
+    #         pending[target][retained] += flux
+    #         in_degree_remaining[target] -= 1
 
-        for node in topo_order:
+    #     for node in topo_order:
 
 
-            if in_degree_remaining.get(node, 0) > 0 or not pending.get(node):
+    #         if in_degree_remaining.get(node, 0) > 0 or not pending.get(node):
+    #             continue
+    #         for retained, flux in list(pending[node].items()):
+
+    #             if flux < self.flux_error:
+    #                 continue
+    #             for u, v, w in self.transitions.out_edges(node, data="weight"):
+    #                 new_flux = flux * w
+
+    #                 # Below cutoff — drop the ribosome if translating
+
+    #                 next_retained = retained + 1 if self.is_retention(u, v) else retained
+    #                 self.add_edge(u, v, flux=new_flux)
+
+    #                 dispatch(v, new_flux, next_retained)
+    #         del pending[node]
+
+
+    def _iterate_graph_topo(self, start_node, start_flux, start_retained=0):
+
+        queue = deque()
+        queue.append((start_node, start_flux, start_retained))
+
+        accumulated = defaultdict(float)
+
+        while queue:
+
+            node, flux, retained = queue.popleft()
+
+            if flux < self.flux_cutoff:
                 continue
-            for retained, flux in list(pending[node].items()):
 
-                if flux < self.flux_error:
-                    continue
-                for u, v, w in self.transitions.out_edges(node, data="weight"):
-                    new_flux = flux * w
+            state_key = (node, retained)
 
-                    # Below cutoff — drop the ribosome if translating
+            accumulated[state_key] += flux
 
-                    next_retained = retained + 1 if self.is_retention(u, v) else retained
-                    self.add_edge(u, v, flux=new_flux)
+            for u, v, w in self.transitions.out_edges(node, data="weight"):
 
-                    dispatch(v, new_flux, next_retained)
-            del pending[node]
+                next_retained = (
+                    retained + 1 if self.is_retention(u, v)
+                    else retained
+                )
 
-
-
-        
-    def collapse_unused_nodes(self):
-        changed = True
-        test_graph = deepcopy(self)
-        test_graph.remove_node(self.bulk_node)
-    
-
-        while changed:
-            changed = False
-            for node in list(nx.topological_sort(test_graph)):
-                if node.phase == -1:
+                if (
+                    self.retention_limit is not None
+                    and next_retained > self.retention_limit
+                ):
                     continue
 
-                in_edges = self.in_edges(node)
-                #ignore nodes with more than 1 in edge
-                if len(list(in_edges)) > 1:
-                    continue
+                new_flux = flux * w
 
-                in_u = False
-                out_v = False
-                for u,_ in in_edges:
-                    if u.phase == node.phase:
-                        in_u = u
-                        break
+                self.add_edge(u, v, flux=new_flux)
 
-                out_edges = self.out_edges(node)
-                for _,v in out_edges:
-                    if v.phase == node.phase:
-                        out_v = v
-                        break
-
-                if not in_u or not out_v:
-                    continue
-                
-                
-                
-
-                in_flux_end = self[in_u][node]['flux_end']
-                
-                out_flux = self[node][out_v]['flux_start']
-                in_flux_start = self[in_u][node]['flux_start']
-                out_decay = self[node][out_v]['flux_start'] - self[node][out_v]['flux_end']
-
-                if abs(in_flux_end - out_flux) < self.flux_error:
-
-                    self.remove_node(node)
-
-
-                    drop_flux = in_flux_start * self.edge_decay(in_u, out_v)
-                    endflux = in_flux_start - drop_flux
-
-                    if drop_flux != 0:
-                        drop_node = RiboNode(out_v.position, -1)
-                        out_drop_flux = self[out_v][drop_node]['flux_start']
-                        non_decay_drop = out_drop_flux - out_decay
-                        non_decay_drop = non_decay_drop if non_decay_drop > self.flux_error else 0
-
-                        drop_flux += non_decay_drop
-
-                        if self.has_edge(out_v, drop_node):
-                            self.remove_edge(out_v, drop_node)
-
-
-                        #new drop edge
-                        self.add_edge(out_v, drop_node,
-                            flux_start=drop_flux,
-                            flux_end=drop_flux)
-                        
-                        #new recycling edge
-                        self.add_edge(drop_node, self.bulk_node, flux_start=drop_flux, flux_end=drop_flux)
-
-                    #new horizontal edge
-                    self.add_edge(in_u, out_v,
-                                flux_start=in_flux_start,
-                                flux_end=endflux,
-                                decay=drop_flux)
-                    changed = True
-
-                    break
-        
-        parentless_nodes = []
-        for u, v, data in self.edges(data=True):
-            if v == self.bulk_node:
-                influx = 0
-                for _, _, flux in self.in_edges(u, data='flux_end'):
-                    influx += flux
-                data['flux_start'] = influx
-                data['flux_end'] = influx
-            if self.in_degree(u) < 1:
-                parentless_nodes.append(u)
-        self.remove_nodes_from(parentless_nodes)
-
+                if new_flux >= self.flux_cutoff:
+                    queue.append((v, new_flux, next_retained))
 
 
         
@@ -287,25 +231,6 @@ class RiboGraphFlux(RiboGraph):
     
     def is_initiation(self, u, v):
         return u.phase == 0 and v.phase > 0
-    
-    
-    def add_transition(self, source, target, weight):
-        """
-        Adds new tranistion to graph. 
-        """
-        self.transitions.add_edge(source, target, weight=weight)
-        self.clear_edges()
-        self.construct()
-
-    def add_transitions_from(self, tbunch):
-        """
-        Adds transitions from an iterable. Must be of form (source, target, weight)
-        Flux is recalculated after adding.
-        """
-        self.transitions.add_weighted_edges_from(tbunch)
-        self.clear_edges()
-        self.construct()
-
 
 
     def _normalize_flux(self):
@@ -398,7 +323,8 @@ class RiboGraphFlux(RiboGraph):
 
     def _valid_in_out(self):
         out_flux = 0
-        for _,_, flux in self.in_edges(self.bulk_node, data='flux'):
+    
+        for _,_, flux in self.out_edges(self.bulk_node, data='flux'):
             out_flux += flux
 
         in_flux = 0
@@ -406,7 +332,7 @@ class RiboGraphFlux(RiboGraph):
             for _, _, flux in self.out_edges(node, data='flux'):
                 in_flux += flux
 
-        
+            
         if abs(out_flux - in_flux) > self.flux_error:
 
             warnings.warn(f'Flux in: {in_flux} does not equal Flux out: {out_flux}, '

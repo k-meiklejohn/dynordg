@@ -13,6 +13,7 @@ from .data import Pt
 from .render import LayoutEngine, RiboRenderer
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
+import networkx as nx
 
 
 class RiboGraphVis(RiboGraph):
