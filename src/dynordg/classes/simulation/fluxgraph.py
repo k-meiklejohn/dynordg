@@ -133,6 +133,7 @@ class RiboGraphFlux(RiboGraph):
         self.flux_cutoff = flux_cutoff
         self.flux_error = 0.000000000000001
         self.retention_limit = retention_limit
+
         if self.transitions:
             self.construct()   
     
@@ -141,71 +142,29 @@ class RiboGraphFlux(RiboGraph):
         self._normalize_flux()
         self._is_valid()
 
-    # def _iterate_graph_topo(
-    #     self,
-    #     start_node: RiboNode,
-    #     start_flux: float,
-    #     start_retained: int = 0,
-    # ):
-    #     DAG = deepcopy(self.transitions)
-    #     DAG.remove_node(DAG.bulk_node)
-    #     topo_order = list(nx.topological_sort(DAG))
-    #     topo_order=[self.transitions.bulk_node] + topo_order
-    #     pending: dict[RiboNode, dict[int, float]] = defaultdict(lambda: defaultdict(float))
-    #     pending[start_node][start_retained] += start_flux
-
-    #     # Only process a node once all upstream flux has arrived
-    #     in_degree_remaining = {node:DAG.in_degree(node) for node in DAG}
-    #     in_degree_remaining[start_node] = 0
-
-    #     def dispatch(target: RiboNode, flux: float, retained: int):
-    #         """Accumulate flux into target and mark one upstream sender as done."""
-    #         if target == self.bulk_node:
-    #             return
-    #         pending[target][retained] += flux
-    #         in_degree_remaining[target] -= 1
-
-    #     for node in topo_order:
-
-
-    #         if in_degree_remaining.get(node, 0) > 0 or not pending.get(node):
-    #             continue
-    #         for retained, flux in list(pending[node].items()):
-
-    #             if flux < self.flux_error:
-    #                 continue
-    #             for u, v, w in self.transitions.out_edges(node, data="weight"):
-    #                 new_flux = flux * w
-
-    #                 # Below cutoff — drop the ribosome if translating
-
-    #                 next_retained = retained + 1 if self.is_retention(u, v) else retained
-    #                 self.add_edge(u, v, flux=new_flux)
-
-    #                 dispatch(v, new_flux, next_retained)
-    #         del pending[node]
-
 
     def _iterate_graph_topo(self, start_node, start_flux, start_retained=0):
-
         queue = deque()
         queue.append((start_node, start_flux, start_retained))
 
         accumulated = defaultdict(float)
-
+        first = True
         while queue:
 
             node, flux, retained = queue.popleft()
+            if node == self.bulk_node and not first:
+                break
+            elif node == self.bulk_node and first:
+                first = False
 
             if flux < self.flux_cutoff:
                 continue
-
             state_key = (node, retained)
 
             accumulated[state_key] += flux
 
             for u, v, w in self.transitions.out_edges(node, data="weight"):
-
+                
                 next_retained = (
                     retained + 1 if self.is_retention(u, v)
                     else retained
@@ -234,11 +193,12 @@ class RiboGraphFlux(RiboGraph):
 
 
     def _normalize_flux(self):
-        flux_keys = ('flux')
+        flux_keys = ('flux', 'flux_start', 'flux_end', 'decay')
         fluxes = []
-        for u,v, data in self.edges(data=True):
-            if 'flux' in data:
-                fluxes.append(data['flux'])
+        for key in flux_keys:
+            for u,v, data in self.edges(data=True):
+                if key in data:
+                    fluxes.append(data[key])
         fluxes = set(fluxes)
         max_flux = max(fluxes)
         

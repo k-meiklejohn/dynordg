@@ -10,7 +10,6 @@ class Transition:
     target: RiboNode
     weight: float
 
-@dataclass
 class Pipe:
     output_phase: int
     probability: float

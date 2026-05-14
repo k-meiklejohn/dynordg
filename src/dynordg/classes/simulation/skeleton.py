@@ -137,7 +137,7 @@ class RiboSkeleton(TransitionMap):
     ):
         super().__init__(incoming_graph_data, **attr)
         self.pipelist = pipelist
-        print('pipelist:', self.pipelist)
+        
         self.stack: list[tuple[RiboNode, float]] = []
         self.behaviours: list[FactorBehaviour] | None = sorted(behaviours) if behaviours else None
         self.visited: list[RiboNode] = []

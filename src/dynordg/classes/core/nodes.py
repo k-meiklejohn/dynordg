@@ -1,23 +1,25 @@
 class State:
-    def __init__(self, phase: int, *factors:str):
+    def __init__(self, phase: int, **subphases):
 
         if not isinstance(phase, int):
             raise ValueError(f'RiboNode phase must be int, got {phase}')
         if phase < -1 or phase > 3:
             raise ValueError(f'Phase must be int, between -1 and 3 inclusive, got {phase}')
-        for arg in factors:
-            if not isinstance(arg, str):
-                raise ValueError
         self.phase = phase
-        self.factors: tuple[str,...] = tuple({*factors})
+        self._subphases = {}
+        self._subphases.update(subphases)
 
     @property
+    def subphases(self):
+        return tuple(sorted(self._subphases.items()))
+    
+    @property
     def __members(self):
-        return (self.phase, self.factors)
+        return (self.phase, self.subphases)
 
     def __repr__(self):
-        if len(self.factors):
-            return f"Phase:{self.phase} Factors:{self.factors}"
+        if len(self.subphases):
+            return f"Phase:{self.phase} Factors:{self.subphases}"
         else:
             return f"Phase:{self.phase}"
         
@@ -26,29 +28,38 @@ class State:
             return self.__members == value.__members
         else:
             return False
-    
+        
+    def add_subphase(self, key:str, value:... = True) -> 'State':
+        """Returns a new state with the subphase added, will overwrite existing values silently"""
+        out_dict = dict(self.subphases)
+        out_dict[key] = value
+        return State(self.phase, **out_dict)
+
     def __add__(self, other):
-        if isinstance(other, str):
-            other = (other,)
-        elif not isinstance(other, tuple):
-            raise ValueError(f"+ not implemented between 'State' and '{type(other).__name__}'")
-        for arg in other:
-            if not isinstance(arg, str):
-                raise ValueError(f"+ not implemented between 'State' and 'tuple[{type(arg).__name__}]'")
-        new_factors = self.factors + other
-        return State(self.phase, *new_factors)
+        other = str(other)
+        out_dict = dict(self.subphases)
+        if other in self._subphases:
+            if isinstance(self._subphases[other], int):
+                out_dict[other] += 1
+                return State(self.phase, **out_dict)
+    
+        out_dict[other] = True
+        return State(self.phase, **out_dict)
 
     def __sub__(self, other):
-        if isinstance(other, str):
-            other = (other,)
-        elif not isinstance(other, tuple):
-            raise ValueError(f"- not implemented between 'State' and '{type(other).__name__}'")
-        new_factors = self.factors
-        for arg in other:
-            if not isinstance(arg, str):
-                raise ValueError(f"- not implemented between 'State' and '{type(arg).__name__}'")
-            new_factors = tuple(item for item in new_factors if item != arg)
-        return State(self.phase, *new_factors)
+        other = str(other)
+        out_dict = dict(self.subphases)
+        print(out_dict)
+        if other in self._subphases:
+            if isinstance(self._subphases[other], int):
+                out_dict[other] -= 1
+                if out_dict[other] == 0:
+                    out_dict.pop(other)
+                return State(self.phase, **out_dict)
+        
+            out_dict.pop(other)
+            return State(self.phase, **out_dict)
+        return self
     
     def __hash__(self) -> int:
         return hash(self.__members)
