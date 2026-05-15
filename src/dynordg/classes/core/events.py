@@ -10,75 +10,139 @@ class Transition:
     target: RiboNode
     weight: float
 
-class Pipe:
-    output_phase: int
-    probability: float
-    position: int
-    input_phase: int|tuple[int,...]|None = None
-    remove_factors: str|tuple[str,...]|None = None
-    add_factors: str|tuple[str,...]|None = None
-    required_factors: str|tuple[str,...]|None = None
-    exclude_factors: str|tuple[str,...]|None = None
-    position_change: int|None = None
 
-    def enter(self, state:State) -> bool:
-        """Return true if state fulfils input conditions of this pipe"""
-        if self.input_phase is not None:
-            if isinstance(self.input_phase, int):
-                phase = state.phase == self.input_phase
-            elif isinstance(self.input_phase, tuple):
-                phase = state.phase in self.input_phase
-        else:
-            phase = True
+from dataclasses import dataclass, field
+from typing import Any, Callable
 
-        if self.required_factors:
-            factors = self.required_factors in state.factors
-        else:
-            factors = True
-        if self.exclude_factors:
-            if isinstance(self.exclude_factors, tuple):
-                exclude = any(e in state.factors for e in self.exclude_factors)
-            elif isinstance(self.exclude_factors, str):
-                exclude = self.exclude_factors in state.factors
-        else:
-            exclude = False
+@dataclass
+class PhaseCondition:
+    """Matches a set of phases. Pass a single int, a set, or a callable."""
+    phases: int | set[int] | Callable[[int], bool]
+    
+    def match(self, phase: int) -> bool:
+        if callable(self.phases):
+            return self.phases(phase)
+        if isinstance(self.phases, set):
+            return phase in self.phases
+        return phase == self.phases
+
+# Pre-built helpers
+ANY_TRANSLATING = PhaseCondition({1, 2, 3})
+SCANNING       = PhaseCondition(0)
+IN_SOLUTION    = PhaseCondition(-1)
+SAME_FRAME     = None  # resolved at pipe-creation time using event.frame
+
+
+@dataclass
+class SubphaseCondition:
+    """
+    Class that holds conditions of subphase that must to return self.match=True
+    minimum is inclusive
+    maximum is exclusive
+    """
+    required:  tuple[str, ...]|str = field(default_factory=tuple)   # must ALL be present
+    excluded:  tuple[str, ...]|str = field(default_factory=tuple)   # must NONE be present
+    minimum:   dict[str, int|None]  = field(default_factory=dict)    # key >= value
+    maximum:   dict[str, int|None]  = field(default_factory=dict)    # key <= value
+    
+    def __post_init__(self):
+        if isinstance(self.required, str):
+            self.required = (self.required,)
+        if isinstance(self.excluded, str):
+            self.excluded = (self.excluded,)
+
+    def match(self, state: State) -> bool:
+        factor_dict = dict(state.subphases)
         
-        return phase and factors and not exclude
+        for f in self.required:
+            if f not in factor_dict:
+                return False
+        for f in self.excluded:
+            if f in factor_dict:
+                return False
+        for f, min_val in self.minimum.items():
+            if min_val is not None:
+                val = factor_dict.get(f)
+                if val is None or (isinstance(val, int) and val < min_val):
+                    return False
+        for f, max_val in self.maximum.items():
+
+            if max_val is not None:
+                val = factor_dict.get(f)
+                if max_val == 0:
+                    return False
+                if val is None:
+                    continue
+
+                if (isinstance(val, int) and val >= max_val):
+                    return False
+        return True
     
-    def out_state(self, state:State) -> State:
-        """Gives the finishing state of a ribosome with the inputted state passing through this pipe"""
-        out = State(state.phase, *state.factors)
-        if self.remove_factors:
-            if self.remove_factors == 'all':
-                out = State(out.phase)
-            else:
-                out -= self.remove_factors
+    def __lt__(self, other):
+        if not isinstance(other, SubphaseCondition):
+            raise TypeError(f"'<' not supported between instances of 'SubphaseCondition' and '{type(other).__name__}'")
+        return len(self.required) < len(other.required)
+
+    
+@dataclass
+class Pipe:
+    output_phase:     int
+    probability:      float
+    input_position:   int
+    output_position:  int|None = None
+    phase_condition:  PhaseCondition   = field(default_factory=lambda: PhaseCondition({-1,0,1,2,3}))
+    subphase_conditions: SubphaseCondition  = field(default_factory=SubphaseCondition)
+    remove_factors:   str | tuple[str, ...] | None = None
+    add_factors:      str | tuple[str, ...] | None = None
+
+    def __post_init__(self):
+        if self.output_position is None:
+            self.output_position = self.input_position
+    
+
+    def enter(self, state: State) -> bool:
+        return (
+            self.phase_condition.match(state.phase)
+            and self.subphase_conditions.match(state)
+        )
+
+    def out_state(self, state: State) -> State:
+        out = State(self.output_phase, **dict(state.subphases))
+        
+        if self.remove_factors == 'all':
+            out = State(self.output_phase)
+        elif self.remove_factors:
+            factors = (self.remove_factors,) if isinstance(self.remove_factors, str) else self.remove_factors
+            for f in factors:
+                out = out - f
+                
         if self.add_factors:
-            out += self.add_factors
-        out.phase = self.output_phase
-        return out 
-    
-    def target(self, state:State) -> RiboNode:
-        """Returns the transition from a given node"""
-        shift = self.position_change if self.position_change else 0
-        return RiboNode(self.position + shift, self.out_state(state))
+            factors = (self.add_factors,) if isinstance(self.add_factors, str) else self.add_factors
+            for f in factors:
+                out = out + f
+        return out
+
+    def target(self, state: State) -> RiboNode:
+        if not isinstance(self.output_position, int):
+            raise RuntimeError(f'Output position was not set for this pipe: {self}')
+        return RiboNode(self.output_position, self.out_state(state))
     
     def __repr__(self) -> str:
-        if self.required_factors:
-            return f"Pos:{self.position}, Phase:{self.input_phase}, Factors:{self.required_factors}"
-        else:
-            return f"Pos:{self.position}, Phase:{self.input_phase}"
-        
+        inpos = f"Pos:{self.input_position}"
+        outpos = f"Pos:{self.output_position}"
+        inphase = f", Phase:{self.phase_condition}" if self.phase_condition else ""
+        outphase = f", Phase:{self.output_phase}"
+        infactors = f", Factors:{self.subphase_conditions}" if self.subphase_conditions else ""
+        add = f", Add:{self.add_factors}" if self.add_factors else ""
+        remove = f", Remove{self.remove_factors}" if self.remove_factors else ""
+        return f"\n>PIPE>\n" \
+               f"IN | {inpos}{inphase}{infactors}\n" \
+               f"OUT| {outpos}{outphase}{add}{remove}"
+
     def __lt__(self, other):
         if not isinstance(other, Pipe):
-            raise TypeError(f"< not supported between 'Pipe' and {type(other).__name__}'" )
-        own_factors = self.required_factors if self.required_factors else []
-        if isinstance(own_factors, str):
-            own_factors = [1]
-        other_factors = other.required_factors if other.required_factors else []
-        if isinstance(other_factors, str):
-            other_factors = [1]
-        return len(own_factors) < len(other_factors)
+            raise TypeError(f"'<' not supported between instances of 'Pipe' and '{type(other).__name__}'")
+        return self.subphase_conditions < other.subphase_conditions
     
 class Event:
     FRAME_DICT = {1:1,
@@ -96,10 +160,13 @@ class Event:
         self.type = self.__class__.__name__
 
     @property
-    @abstractmethod
     def pipe(self) -> Pipe:
         """Return transitions for this event"""
-        ...
+        return Pipe(output_phase=-1,
+                    probability=self.probability,
+                    input_position=self.position)
+
+
     @property
     def __members(self):
         return (self.position, self.probability, self.type)
@@ -139,53 +206,57 @@ class Reading(Event):
         super().__init__(position, probability)
 
 class Initiation(Reading):
-    @property
-    def pipe(self) -> Pipe:
-        return Pipe(output_phase=self.frame,
-                    probability=self.probability,
-                    position=self.position,
-                    input_phase=0,
-                    remove_factors="ternary_complex",
-                    required_factors="ternary_complex",
-                    )
-    
-class Loading(Event):
-    def __init__(self, position: int, probability: float):
-        super().__init__(position, probability)
-        self.source = RiboNode(self.position, State(-1))
 
-class IRES(Loading):
+
     @property
     def pipe(self) -> Pipe:
-        return Pipe(output_phase=self.frame,
-                    probability=self.probability,
-                    position=self.position,
-                    input_phase=-1,
-                    required_factors='ternary_complex',
+        pc = PhaseCondition(0)
+        spc = SubphaseCondition(required="ternary_complex")
+        return Pipe(self.frame,
+                    self.probability,
+                    self.position,
+                    phase_condition=pc,
+                    subphase_conditions=spc,
                     remove_factors='ternary_complex')
     
-class DropOff(Reading):
-    def __init__(self, position: int, probability: float):
-        super().__init__(position, probability)
-        self.target = RiboNode(self.position, State(-1))
 
-class Termination(DropOff):
+class IRES(Event):
+    @property
+    def pipe(self) -> Pipe:
+        return Pipe(output_phase=self.frame,
+                    probability=self.probability,
+                    input_position=self.position,
+                    phase_condition=PhaseCondition(-1),
+                    subphase_conditions=SubphaseCondition('ternary_complex'),
+                    remove_factors='ternary_complex')
+    
+
+class Termination(Reading):
     @property
     def pipe(self) -> Pipe:
         return Pipe(output_phase=-1,
-                    probability=self.probability, 
-                    position=self.position,
-                    input_phase=self.frame,
+                    probability=self.probability,
+                    input_position=self.position,
+                    phase_condition=PhaseCondition(self.frame),
+                    remove_factors='all'
                     )
     
 class Retention(Reading):
+    def __init__(self, position: int, probability: float, limit: int|None = None):
+        """Limit is the max number of times a ribosome may have previously initiated"""
+        super().__init__(position, probability)
+        self.limit = limit
+        
+
     @property
     def pipe(self) -> Pipe:
         return Pipe(output_phase=0,
                     probability=self.probability,
-                    position=self.position,
-                    input_phase=self.frame,
-                    required_factors='scanning_factors')
+                    input_position=self.position,
+                    phase_condition=PhaseCondition(self.frame),
+                    subphase_conditions=SubphaseCondition('scanning_factors', maximum={'retained':self.limit}),
+                    add_factors='retained'
+                    )
     
 class Frameshift(Reading):
     def __init__(self, position, probability, amount: int):
@@ -199,24 +270,24 @@ class Frameshift(Reading):
         frame_to = self.FRAME_DICT[(self.position + self.amount)%3]
         return Pipe(output_phase=frame_to,
                     probability=self.probability,
-                    position=self.position,
-                    input_phase=self.frame,
-                    position_change=self.amount)
+                    input_position=self.position,
+                    output_position=self.position+self.amount,
+                    phase_condition=PhaseCondition(self.frame),
+                    )
     
-class LoadScanning(Loading):
+class LoadScanning(Event):
     @property
     def pipe(self) -> Pipe:
         return Pipe(output_phase=0,
                     probability=self.probability,
-                    position=self.position,
-                    input_phase=-1,
-                    required_factors=('ternary_complex', 'scanning_factors'),
-                    add_factors=('ternary_complex', 'scanning_factors')
+                    input_position=self.position,
+                    phase_condition=PhaseCondition(-1),
+                    subphase_conditions=SubphaseCondition(tuple(('ternary_complex', 'scanning_factors')))
                     )
     
-class AllDrop(DropOff):
+class AllDrop(Reading):
     @property
     def pipe(self) -> Pipe:
         return Pipe(output_phase=-1,
                     probability=self.probability,
-                    position=self.position)    
+                    input_position=self.position)    

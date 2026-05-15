@@ -54,7 +54,7 @@ class RiboGraph(DiGraph):
                     merged[key] = new_val
                 elif new_val is None:
                     merged[key] = existing_val
-                elif key.startswith(('flux')): #this may change
+                elif key.startswith(('flux', 'decay')): #this may change
                     merged[key] = existing_val + new_val
                 else:
                     merged[key] = new_val  # overwrite non-flux attributes
@@ -67,9 +67,9 @@ class RiboGraph(DiGraph):
         Returns the in edge in the same phase as the node
         """
         if data:
-            for u, v, data in self.in_edges(node, data=data):
+            for u, v, indata in self.in_edges(node, data=data):
                 if u.phase == node.phase:
-                    return (u,v,data)
+                    return (u,v,indata)
         else:    
             for u, v in self.in_edges(node):
                 if u.phase == node.phase:
@@ -80,12 +80,12 @@ class RiboGraph(DiGraph):
         """
 
         if data:
-            for u, v, data in self.out_edges(node, data=data):
+            for u, v, indata in self.out_edges(node, data=data):
                 if v.phase == node.phase:
-                    return (u,v, data)
+                    return (u,v, indata)
             
         else:    
-            for u, v in self.in_edges(node):
+            for u, v in self.out_edges(node):
                 if u.phase == node.phase:
                     return (u,v)
                 
@@ -101,8 +101,10 @@ class RiboGraph(DiGraph):
 
             self.remove_nodes_from(zero_indegree)
 
+    @property
+    def dag(self):
+        return DiGraph((u, v) for u, v in self.edges() if v != self.bulk_node)
 
- 
 
 
     

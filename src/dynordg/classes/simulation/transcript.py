@@ -131,7 +131,7 @@ class Transcript(SeqRecord):
                 self._events.remove(e)
 
 
-    def auto_stop_starts(self, cutoff=0.0, reinitiation_prob = 0.0):
+    def auto_stop_starts(self, cutoff=0.0, reinitiation_prob = 0.0, reinitiation_limit = None):
         """
         Automatically adds initiation and termination events to the transcript based on sequence.
         Uses scores based on Noderer 2014 to calculate probabilities of initation.
@@ -155,7 +155,7 @@ class Transcript(SeqRecord):
                 elif codon in ['UAG', 'UGA', 'UAA']:
                     self.add_event(Termination(i+1, 1))
                     if reinitiation_prob > 0:
-                        self.add_event(Retention(i+1, reinitiation_prob))
+                        self.add_event(Retention(i+1, reinitiation_prob, reinitiation_limit))
 
   
 

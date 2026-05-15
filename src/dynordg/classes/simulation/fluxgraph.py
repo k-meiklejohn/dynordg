@@ -9,8 +9,9 @@ from collections import defaultdict
 import heapq
 import networkx as nx
 import matplotlib.pyplot as plt
-
+from .skeleton import ScanningDecay, TranslationDecay
 from collections import deque, defaultdict
+from functools import cached_property
 
 
 class RiboGraphFlux(RiboGraph):
@@ -116,23 +117,18 @@ class RiboGraphFlux(RiboGraph):
     """
 
     def __init__(self, skeleton: RiboSkeleton, 
-                 incoming_graph_data=None, 
-                 weight_cutoff=0.0, 
                  flux_cutoff = 0.001,
-                 retention_limit: int|None = 1,
+                 incoming_graph_data=None, 
                  **attr):
         
 
         super().__init__(incoming_graph_data, **attr)
 
         self.transitions = skeleton
-        self.begun = False
         if incoming_graph_data is not None:
             raise ValueError('Incoming graph data must be left empty, graph is calculated from skeleton')
-        self.weight_cutoff = weight_cutoff
         self.flux_cutoff = flux_cutoff
         self.flux_error = 0.000000000000001
-        self.retention_limit = retention_limit
 
         if self.transitions:
             self.construct()   
@@ -142,83 +138,65 @@ class RiboGraphFlux(RiboGraph):
         self._normalize_flux()
         self._is_valid()
 
-
-    def _iterate_graph_topo(self, start_node, start_flux, start_retained=0):
-        queue = deque()
-        queue.append((start_node, start_flux, start_retained))
-
+    def _iterate_graph_topo(self, start_node, start_flux):
         accumulated = defaultdict(float)
-        first = True
-        while queue:
+        accumulated[self.transitions.bulk_node] = start_flux
 
-            node, flux, retained = queue.popleft()
-            if node == self.bulk_node and not first:
-                break
-            elif node == self.bulk_node and first:
-                first = False
+        # Copy to plain DiGraph to avoid subgraph_view instantiation issues
+        dag = nx.DiGraph(
+            (u, v, d) for u, v, d in self.transitions.edges(data=True)
+            if v != self.transitions.bulk_node
+        )
 
-            if flux < self.flux_cutoff:
+        for node in nx.topological_sort(dag):
+            flux = accumulated[node]
+            if not flux:
                 continue
-            state_key = (node, retained)
-
-            accumulated[state_key] += flux
-
-            for u, v, w in self.transitions.out_edges(node, data="weight"):
-                
-                next_retained = (
-                    retained + 1 if self.is_retention(u, v)
-                    else retained
-                )
-
-                if (
-                    self.retention_limit is not None
-                    and next_retained > self.retention_limit
-                ):
-                    continue
-
-                new_flux = flux * w
-
-                self.add_edge(u, v, flux=new_flux)
-
-                if new_flux >= self.flux_cutoff:
-                    queue.append((v, new_flux, next_retained))
+            out_edge_weights = {(u,v):w for u,v,w in self.transitions.out_edges(node, data='weight')}
+            dispatchable = self._calc_flux_dispatch(out_edge_weights, flux)
+            for edge, eflux in dispatchable.items():
+                self.add_edge(edge[0], edge[1], flux=eflux)
+                accumulated[edge[1]] += eflux
 
 
-        
-    def is_retention(self, u, v):
-        return u.phase > 0 and v.phase == 0
+    def _calc_flux_dispatch(self, weight_dict: dict[tuple[RiboNode, RiboNode], float], flux: float) -> dict:
+        if not weight_dict:
+            return {}
+        while weight_dict:
+            # Find the single minimum edge
+            min_edge = min(weight_dict, key=lambda e: weight_dict[e])
+
+            if flux * weight_dict[min_edge] >= self.flux_cutoff:
+                # All edges above cutoff
+                return {edge: flux * w for edge, w in weight_dict.items()}
+
+            # Remove minimum and redistribute its weight proportionally
+            dead_weight = weight_dict.pop(min_edge)
+            total_surviving = sum(weight_dict.values())
+
+            for edge in weight_dict:
+                weight_dict[edge] += dead_weight * (weight_dict[edge]/ total_surviving)
     
-    def is_initiation(self, u, v):
-        return u.phase == 0 and v.phase > 0
+        return {}
 
-
+                
     def _normalize_flux(self):
         flux_keys = ('flux', 'flux_start', 'flux_end', 'decay')
-        fluxes = []
-        for key in flux_keys:
-            for u,v, data in self.edges(data=True):
-                if key in data:
-                    fluxes.append(data[key])
-        fluxes = set(fluxes)
-        max_flux = max(fluxes)
-        
-        factor = 1/ max_flux if max_flux > 1 else 1
+        max_flux = max(d[k] for k in flux_keys for _,_,d in self.edges(data=True) if k in d)
+        factor = 1 / max_flux if max_flux > 1 else 1
         if factor == 1:
             return
-        flux_dict = {}
-        for flux in fluxes:
-            flux_dict[flux] = flux * factor
-        for u,v,data in self.edges(data=True):
-            for key in flux_keys:
-                if key in data:
-                    data[key] = flux_dict[data[key]]
+        for u, v, data in self.edges(data=True):
+            for k in flux_keys:
+                if k in data:
+                    data[k] *= factor
             
 
 
     def _is_valid(self):
         self._valid_in_out()
 
-    @property
+    @cached_property
     def ribopaths(self) -> list[list[RiboNode]]:
         """
         Returns a list of the paths with continued 40S association, each as a list of edge tuples.
@@ -229,7 +207,7 @@ class RiboGraphFlux(RiboGraph):
                 paths.append(path)
         return paths
     
-    @property
+    @cached_property
     def translons(self) -> list[list[RiboNode]]:
         """
         Returns a list of all translons in the graph (continued 60S association) as a list of edge tuples
@@ -309,6 +287,8 @@ class RiboGraphFlux(RiboGraph):
         out.clear()
         out.bulk_node = self.bulk_node.simple
         for u, v, flux in self.edges(data='flux'):
+            u:RiboNode
+            v:RiboNode
 
             if u.simple == v.simple:
                 continue
@@ -320,7 +300,88 @@ class RiboGraphFlux(RiboGraph):
                 out.add_edge(u.simple, v.simple,
                             flux_start=flux,
                             flux_end=flux)
-        return out
+                
+        changed = True
+        topo_nodes:list[RiboNode] = list(nx.topological_sort(out.dag))
+
+        while changed:
+            changed = False
+
+            for node in topo_nodes:
+                
+
+                if node.phase == -1 or node not in out:
+                    continue
+
+                in_edges = list(out.in_edges(node, data=True))
+                if len(in_edges) != 1:
+                    continue
+
+
+                in_u, _, in_data = in_edges[0]
+                if in_u.phase != node.phase:
+                    continue
+
+                out_edges = list(out.out_edges(node, data=True))
+                h_out = [edge for edge in out_edges if edge[1].phase == node.phase]
+                if not h_out:
+                    continue
+                else:
+                    _, out_v, out_data = h_out[0]
+
+
+                # Flux must be continuous across the pass-through node
+                if abs(in_data['flux_end'] - out_data['flux_start']) > out.flux_error:
+                    continue
+
+                # Gather everything before touching the out
+                in_flux_start = in_data['flux_start']
+                in_decay      = in_data.get('decay', 0.0)
+                out_decay     = out_data.get('decay', 0.0)
+                total_decay   = in_decay + out_decay
+                flux_end      = in_flux_start - total_decay
+                drop_node = RiboNode(out_v.position, State(-1))
+
+                # Read existing drop edge data before any mutation
+                existing_drop = (out[out_v][drop_node].copy()
+                                if out.has_edge(out_v, drop_node) else {})
+
+                # Now mutate: remove the intermediate node (drops both its edges)
+                
+                out.remove_node(node)
+
+                # Reconnect: add_edge accumulates, so safe to call even if edge exists
+
+                out.add_edge(in_u, out_v,
+                            flux_start = in_flux_start,
+                            flux_end   = flux_end,
+                            **({'decay': total_decay} if total_decay > 0 else {}))
+
+                # Update drop edge if there was decay
+                if total_decay > 0:
+                    if out.has_edge(out_v, drop_node):
+                        out.remove_edge(out_v, drop_node)
+                    if out.has_edge(drop_node, out.bulk_node):
+                        out.remove_edge(drop_node, out.bulk_node)
+
+                    # Preserve any drop flux that existed independently of this merge
+                    prior_drop = existing_drop.get('flux_start', 0.0)
+                    # Subtract the out_decay portion we already accounted for —
+                    # the remainder was from other paths, keep it
+                    independent_drop = max(prior_drop - out_decay, 0.0)
+                    new_drop = total_decay + independent_drop
+
+                    out.add_edge(out_v, drop_node,
+                                flux_start = new_drop,
+                                flux_end   = new_drop)
+                    out.add_edge(drop_node, out.bulk_node,
+                                flux_start = new_drop,
+                                flux_end   = new_drop)
+
+                changed = True
+                break  # restart topo walk with updated graph
+        return(out)
+
     
     def prune_recycle_edges(self) -> None:
         """

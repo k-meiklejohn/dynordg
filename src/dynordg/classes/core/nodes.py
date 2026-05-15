@@ -1,4 +1,6 @@
 class State:
+
+    ___slots__ = ("phase", "_subphases", "_keys", "_hash")  
     def __init__(self, phase: int, **subphases):
 
         if not isinstance(phase, int):
@@ -6,12 +8,15 @@ class State:
         if phase < -1 or phase > 3:
             raise ValueError(f'Phase must be int, between -1 and 3 inclusive, got {phase}')
         self.phase = phase
-        self._subphases = {}
-        self._subphases.update(subphases)
+        canonical = tuple(sorted(subphases.items()))
+        self._subphases = canonical
+        self._hash = hash((phase, canonical))
+        self._keys = frozenset(subphases)
+        self._map = dict(subphases)
 
     @property
     def subphases(self):
-        return tuple(sorted(self._subphases.items()))
+        return self._subphases
     
     @property
     def __members(self):
@@ -38,20 +43,19 @@ class State:
     def __add__(self, other):
         other = str(other)
         out_dict = dict(self.subphases)
-        if other in self._subphases:
-            if isinstance(self._subphases[other], int):
+        if other in self._map:
+            if isinstance(self._map[other], int):
                 out_dict[other] += 1
                 return State(self.phase, **out_dict)
     
-        out_dict[other] = True
+        out_dict[other] = 1
         return State(self.phase, **out_dict)
 
     def __sub__(self, other):
         other = str(other)
         out_dict = dict(self.subphases)
-        print(out_dict)
-        if other in self._subphases:
-            if isinstance(self._subphases[other], int):
+        if other in self._map:
+            if isinstance(self._map[other], int):
                 out_dict[other] -= 1
                 if out_dict[other] == 0:
                     out_dict.pop(other)
@@ -65,9 +69,7 @@ class State:
         return hash(self.__members)
     
     def __contains__(self, item):
-        if not isinstance(item, str):
-            return TypeError(f"'in' not supported between {type(item).__name__} and 'State")
-        return item in self.factors
+        return item in self._keys
     
     def __lt__(self, other):
         if isinstance(other, State):
@@ -75,7 +77,7 @@ class State:
                 return False
             elif self.phase < other.phase:
                 return True
-            elif self.factors < other.factors:
+            elif self.subphases < other.subphases:
                 return True 
             else:
                 return False
@@ -88,7 +90,7 @@ class State:
                 return False
             elif self.phase > other.phase:
                 return True
-            elif self.factors > other.factors :
+            elif self.subphases > other.subphases :
                 return True 
             else:
                 return False
@@ -120,16 +122,16 @@ class RiboNode:
 
     
     @property
-    def factors(self) -> tuple[str, ...]:
-        return self.state.factors
+    def subphases(self) -> tuple[tuple,...]:
+        return self.state.subphases
 
     @property
     def simple(self):
         return RiboNode(self.position, State(self.phase))
 
     def __repr__(self):
-        if len(self.state.factors):
-            return f"(Pos:{self.position}, Phase:{self.phase}, F:{self.factors})"
+        if len(self.state.subphases):
+            return f"(Pos:{self.position}, Phase:{self.phase}, F:{self.subphases})"
         else:
             return f"(Pos:{self.position}, Phase:{self.phase})"
         
@@ -143,7 +145,7 @@ class RiboNode:
     def __hash__(self) -> int:
         return hash(self.__members)
     
-    def __add__(self, *other):
+    def __add__(self, other):
         return RiboNode(self.position, self.state + other)
     
     def __lt__(self, other):
