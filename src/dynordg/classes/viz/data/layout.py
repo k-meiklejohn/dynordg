@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from .edges import Edge, EdgeGeom, Pt, EdgeSpec
+from .edges import Edge, EdgeGeom, Pt
 from ....constants import _GEOM_POINT_KEYS
 @dataclass
 class LayoutResult:

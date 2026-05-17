@@ -1,1 +1,1 @@
-from .context_score import start_score
+from .context_score import noderer_start_score

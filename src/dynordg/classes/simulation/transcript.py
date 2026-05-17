@@ -13,14 +13,12 @@ Custom additions:
 """
 
 from __future__ import annotations
-from collections import defaultdict
-from typing import Any, NoReturn
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
-from ..core.events import Event, Initiation, Termination, Retention, LoadScanning, AllDrop, Transition, Pipe
-from . import TransitionMap
+from ..core import RiboNode
+from ..core.events import Event, Initiation, Termination, Retention, LoadScanning, AllDrop, Pipe
 import Levenshtein as lv
-from ...functions import start_score
+from ...functions import noderer_start_score
 
 class Transcript(SeqRecord):
     """
@@ -142,13 +140,13 @@ class Transcript(SeqRecord):
                 codon = str(self.seq[i:i+3])
                 if codon == 'AUG':
                     if 6 < i < len(self) - 5:
-                        prob=start_score(sequence=str(self.seq[i-6:i+5]), aug=True)
+                        prob=noderer_start_score(sequence=str(self.seq[i-6:i+5]), aug=True)
                         if prob >= cutoff:
                             self.add_event(Initiation(i+1, prob))
                         
                 elif lv.distance(codon, 'AUG') == 1:
                     if 4 < i < len(self) - 4:
-                        prob = start_score(sequence=str(self.seq[i-4:i+4]), aug=False)
+                        prob = noderer_start_score(sequence=str(self.seq[i-4:i+4]), aug=False)
                         if prob >= cutoff:
                             self.add_event(Initiation(i+1, prob))
                             
@@ -157,15 +155,15 @@ class Transcript(SeqRecord):
                     if reinitiation_prob > 0:
                         self.add_event(Retention(i+1, reinitiation_prob, reinitiation_limit))
 
-  
+    
+    def translon_product(self, translon:list[tuple[RiboNode, RiboNode]]):
+        product = ''
+        for segment in translon:
+            start = segment[0].position - 1
+            end   = segment[1].position - 1
+            seqment = self.seq[start: end]
+            product += Seq.translate(seqment)
+        return product
 
-
-
-            
-
-        
-
-
-
-
-
+    def create_skeleton(self)   -> RiboSkeleton:
+        pass

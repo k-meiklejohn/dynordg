@@ -1,16 +1,10 @@
 from ..graph import RiboGraph
-from .transitionmap import TransitionMap
 from .skeleton import RiboSkeleton
 from ..core import RiboNode, State
-import networkx as nx
+from networkx import DiGraph, all_simple_paths, topological_sort
 import warnings
 from copy import deepcopy
 from collections import defaultdict
-import heapq
-import networkx as nx
-import matplotlib.pyplot as plt
-from .skeleton import ScanningDecay, TranslationDecay
-from collections import deque, defaultdict
 from functools import cached_property
 
 
@@ -117,42 +111,43 @@ class RiboGraphFlux(RiboGraph):
     """
 
     def __init__(self, skeleton: RiboSkeleton, 
-                 flux_cutoff = 0.001,
+                 flux_cutoff = 0.0,
                  incoming_graph_data=None, 
                  **attr):
         
 
         super().__init__(incoming_graph_data, **attr)
 
-        self.transitions = skeleton
+        self.skeleton = skeleton
         if incoming_graph_data is not None:
             raise ValueError('Incoming graph data must be left empty, graph is calculated from skeleton')
         self.flux_cutoff = flux_cutoff
         self.flux_error = 0.000000000000001
 
-        if self.transitions:
+        if self.skeleton:
             self.construct()   
     
     def construct(self):
-        self._iterate_graph_topo(self.transitions.bulk_node, 1)
+        self._iterate_graph_topo()
         self._normalize_flux()
         self._is_valid()
 
-    def _iterate_graph_topo(self, start_node, start_flux):
+    def _iterate_graph_topo(self):
         accumulated = defaultdict(float)
-        accumulated[self.transitions.bulk_node] = start_flux
+        accumulated[self.bulk_node] = 1
+        
 
         # Copy to plain DiGraph to avoid subgraph_view instantiation issues
-        dag = nx.DiGraph(
-            (u, v, d) for u, v, d in self.transitions.edges(data=True)
-            if v != self.transitions.bulk_node
+        dag = DiGraph(
+            (u, v, d) for u, v, d in self.skeleton.edges(data=True)
+            if v != self.bulk_node
         )
 
-        for node in nx.topological_sort(dag):
+        for node in topological_sort(dag):
             flux = accumulated[node]
             if not flux:
                 continue
-            out_edge_weights = {(u,v):w for u,v,w in self.transitions.out_edges(node, data='weight')}
+            out_edge_weights = {(u,v):w for u,v,w in self.skeleton.out_edges(node, data='weight')}
             dispatchable = self._calc_flux_dispatch(out_edge_weights, flux)
             for edge, eflux in dispatchable.items():
                 self.add_edge(edge[0], edge[1], flux=eflux)
@@ -184,9 +179,10 @@ class RiboGraphFlux(RiboGraph):
         flux_keys = ('flux', 'flux_start', 'flux_end', 'decay')
         max_flux = max(d[k] for k in flux_keys for _,_,d in self.edges(data=True) if k in d)
         factor = 1 / max_flux if max_flux > 1 else 1
+
         if factor == 1:
             return
-        for u, v, data in self.edges(data=True):
+        for _, _, data in self.edges(data=True):
             for k in flux_keys:
                 if k in data:
                     data[k] *= factor
@@ -203,38 +199,45 @@ class RiboGraphFlux(RiboGraph):
         """
         paths = []
         for loading in self.successors(self.bulk_node):
-            for path in nx.all_simple_paths(self, loading, self.bulk_node):
+            for path in all_simple_paths(self, loading, self.bulk_node):
                 paths.append(path)
         return paths
     
     @cached_property
-    def translons(self) -> list[list[RiboNode]]:
+    def translons(self) -> list[list[tuple[RiboNode, RiboNode]]]:
         """
-        Returns a list of all translons in the graph (continued 60S association) as a list of edge tuples
+        Returns a list of all translons in the graph (continued 60S association) 
         """
         translon_list = []
+
         for path in self.ribopaths:
             translon = False
             current_translon = []
-            for node in path:
 
+            for node in path:
                 if translon:
                     if node.phase < 1:
                         translon = False
+                        current_translon.append((source, prev_node.simple))
                         translon_list.append(current_translon)
-
+                    
                     else:
-                        current_translon.append(node)
+                        if phase != node.phase:
+                            phase = node.phase
+                            current_translon.append((source, prev_node.simple))
+                            source = node.simple
 
                 elif node.phase > 0:
+                    phase = node.phase
                     translon = True
-                    current_translon.append(node)
+                    source = node.simple
+                prev_node = node
 
-        return list(set(translon_list))
+        return translon_list
 
     def flux_proportion(self, u:RiboNode, v:RiboNode) -> float:
         total_proportion = 0
-        for path in nx.all_simple_paths(self, u , v):
+        for path in all_simple_paths(self, u , v):
             total_proportion += self.flux_proportion_path(path)
         return total_proportion
     
@@ -302,7 +305,7 @@ class RiboGraphFlux(RiboGraph):
                             flux_end=flux)
                 
         changed = True
-        topo_nodes:list[RiboNode] = list(nx.topological_sort(out.dag))
+        topo_nodes:list[RiboNode] = list(topological_sort(out.dag))
 
         while changed:
             changed = False

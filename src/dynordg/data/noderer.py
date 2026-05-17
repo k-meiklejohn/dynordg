@@ -1,10 +1,9 @@
 from importlib.resources import files, as_file
-import csv
-
+from csv import DictReader
 def load_score_dict(filename: str) -> dict:
     with as_file(files("dynordg.data") / filename) as path:
         with open(path, newline="") as f:
-            reader = csv.DictReader(f)
+            reader = DictReader(f)
             return {row["sequence"]: float(row["efficiency"]) for row in reader}
         
 # The AUG and NON-AUG data are derived from:

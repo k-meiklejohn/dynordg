@@ -1,6 +1,6 @@
 from ..data import SEQUENCE_TO_EFF_AUG, SEQUENCE_TO_EFF_NON_AUG
 
-def start_score(sequence: str, aug: bool):
+def noderer_start_score(sequence: str, aug: bool):
     """
     Calculate probability of initiation of a start site.
     AUG: length 11

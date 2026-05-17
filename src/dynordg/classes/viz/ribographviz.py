@@ -11,9 +11,8 @@ from ..graph import RiboGraph
 from ..simulation import RiboGraphFlux
 from .data import Pt
 from .render import LayoutEngine, RiboRenderer
-import matplotlib.pyplot as plt
+from matplotlib.pyplot import show
 from matplotlib.figure import Figure
-import networkx as nx
 
 
 class RiboGraphVis(RiboGraph):
@@ -145,7 +144,7 @@ class RiboGraphVis(RiboGraph):
             pass
 
         # Fallback for scripts / desktop
-        plt.show(block=True)
+        show(block=True)
 
     def save(self, filename='output.png', dpi=150, format=None, **kwargs):
         """

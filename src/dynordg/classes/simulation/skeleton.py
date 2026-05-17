@@ -1,12 +1,9 @@
-from ..graph import RiboGraph
-from .transitionmap import TransitionMap
 from ..core import RiboNode, Transition, State
 from ..core.events import Pipe
-import networkx as nx
-import matplotlib.pyplot as plt
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from collections import defaultdict
+from ..graph import RiboGraph
 from typing import Literal
 
 @dataclass(frozen=True)
@@ -138,7 +135,7 @@ class ScanningFactorDissociation(FactorBehaviour):
         lost = weight * self.fraction(u, v)
         return Transition(u, RiboNode(v.position, u.state - "scanning_factors"), lost)
 
-class RiboSkeleton(TransitionMap):
+class RiboSkeleton(RiboGraph):
 
     def __init__(
         self,
@@ -242,8 +239,6 @@ class RiboSkeleton(TransitionMap):
         for pipe in pipes:
             if not pipe.enter(node.state):
                 continue
-            print(pipe)
-            print(node.state)
             pipe_target = pipe.target(node.state)
             self.add_transition(
                 Transition(node, pipe_target, pipe.probability * unpiped)
@@ -284,3 +279,39 @@ class RiboSkeleton(TransitionMap):
                 result.append(entry)
 
         return result or None
+    
+
+    def add_transition(self, transition: Transition):
+        if isinstance(transition, Transition):
+            if transition.weight == 0:
+                return
+            super().add_edge(transition.source, transition.target, weight=transition.weight)
+        else:
+            raise TypeError(f"add_transition requires type 'Transition', got {type(transition).__name__}")
+
+    def add_transitions_from(self, transitions):
+        for t in transitions:
+            self.add_transition(t)
+
+
+
+    def _is_valid_weight(self):
+
+        for node in self.nodes:
+
+            if node.phase == -1:
+                continue
+
+            if not any(True for _ in self.successors(node)):
+                continue
+
+            total_weight = 0
+
+            for _, _, w in self.out_edges(node, data='weight'):
+                total_weight += w
+
+            if total_weight > 1:
+                raise RuntimeError(f"Weight from node: {node} exceeds 1")
+
+    def _is_valid(self):
+        self._is_valid_weight()

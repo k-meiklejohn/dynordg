@@ -1,7 +1,6 @@
 from .nodes import RiboNode, State
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
-
+from dataclasses import dataclass, field
+from typing import Callable
 
         
 @dataclass
@@ -11,8 +10,6 @@ class Transition:
     weight: float
 
 
-from dataclasses import dataclass, field
-from typing import Any, Callable
 
 @dataclass
 class PhaseCondition:
