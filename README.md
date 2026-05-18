@@ -25,19 +25,10 @@ pip install dynordg
 ## Quick Start
 
 ```python
-from dynordg import Transcript, RiboGraphFlux, RiboGraphVis
+from dynordg import quick_plot
 
-# Create transcript
-t = Transcript("AUGGCCAUGGCGCCCAGAACUGGGUAA")
-
-# Automatically detect start/stop events
-t.auto_stop_starts()
-
-# Build flux graph
-graph = RiboGraphFlux(t.transition_map())
-
-# Create render object
-plot = RiboGraphVis(graph)
+# Creat Render Object
+plot = quick_plot("AUGGCCAUGGCGCCCAGAACUGGGUAA")
 
 # Render
 plot.show()
