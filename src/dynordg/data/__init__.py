@@ -1,1 +1,0 @@
-from .noderer import SEQUENCE_TO_EFF_AUG, SEQUENCE_TO_EFF_NON_AUG

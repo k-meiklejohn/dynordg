@@ -1,4 +1,4 @@
-from ..data import SEQUENCE_TO_EFF_AUG, SEQUENCE_TO_EFF_NON_AUG
+from .data.noderer import SEQUENCE_TO_EFF_AUG, SEQUENCE_TO_EFF_NON_AUG
 
 def noderer_start_score(sequence: str, aug: bool):
     """

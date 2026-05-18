@@ -1,80 +1,356 @@
-from ..graph import RiboGraph
-from .skeleton import RiboSkeleton
-from ..core import RiboNode, State
-from networkx import DiGraph, all_simple_paths, topological_sort
-import warnings
-from copy import deepcopy
+from .core import  RiboNode, State, Pipe, FactorBehaviour, Transition
 from collections import defaultdict
+import networkx as nx
+from typing import Literal
+from dataclasses import dataclass
+import networkx as nx
+import warnings
 from functools import cached_property
+from copy import deepcopy
 
 
-class RiboGraphFlux(RiboGraph):
+class RiboGraph(nx.DiGraph):
+    """
+    A NetworkX Digraph that only accepts RiboNode instances as nodes
+
+    This is the base class for all graph objects in dynordg,
+    it ensurse that any node added is properly marked within ribosomal phase space.
+
+    It inherits all original methods from networkx DiGraph except:
+    add_node       -- now only accepts RiboNodes
+    add_nodes_from -- uses the overwritten add_node
+    add_edge       -- tries to coerce nodes to RiboNode, any attribute
+                      on an edge beginning with 'flux' or 'decay'
+                      is additive, all others overwrite 
+
+    Attributes:
+    
+    dag -- returns a new graph removing any edge leading to the bulk node, usually 
+           returning a directed acyclic graph
+    bulk_node -- alias for (Pos:-1, Phase:-1) in ribosomal phase space
+    
+    Methods:
+
+    remove_weakly_connected -- iteratively removes every node with no in edges
+                               essentially removes any node not part of a cycle
+    """
+
+    def __init__(self, incoming_graph_data = None, **attr):
+        super().__init__(incoming_graph_data, **attr)
+        self.bulk_node = RiboNode(-1,State(-1))
+        self.add_node(self.bulk_node)
+
+
+
+    def add_node(self, node_for_adding: RiboNode, **attr):
+        """
+        Add a new RiboNode to the graph
+        """
+        if not isinstance(node_for_adding, RiboNode):
+            raise TypeError(f"Ribograph only accepts RiboNodes or RiboNode-like tuples, got {type(node_for_adding).__name__!r}")
+        super().add_node(node_for_adding, **attr)
+    
+    
+    def add_nodes_from(self, nodes_for_adding, **attr):
+        """
+        Add multiple RiboNodes to a graph
+        """
+        for node in nodes_for_adding:
+            if not isinstance(node, RiboNode):
+                if isinstance(node, tuple):
+                    pass  # will be coerced by add_node
+                else:
+                    raise TypeError(f'RiboGraph only accepts RiboNodes or RiboNode-like tuples, got {type(node).__name__!r}')
+        super().add_nodes_from(nodes_for_adding, **attr)
+    
+    
+    def add_edge(self, u:RiboNode, v:RiboNode, **attr):
+        """
+        Add an edge consisting of 2 RiboNodes to a graph
+        """
+        if not isinstance(u, RiboNode):
+            u = RiboNode(u)
+        if not isinstance(v, RiboNode):
+            v = RiboNode(v)
+
+        if self.has_edge(u, v):
+            existing = self.edges[u, v]
+            merged = {}
+            for key in set(existing) | set(attr):
+                existing_val = existing.get(key)
+                new_val = attr.get(key)
+                if existing_val is None:
+                    merged[key] = new_val
+                elif new_val is None:
+                    merged[key] = existing_val
+                elif key.startswith(('flux', 'decay')): #this may change
+                    merged[key] = existing_val + new_val
+                else:
+                    merged[key] = new_val  # overwrite non-flux attributes
+            super().add_edge(u, v, **merged)
+        else:
+            super().add_edge(u, v, **attr)
+                
+    def remove_weakly_connected(self):
+        """Remove all nodes not part of a cycle"""
+
+        while True:
+            zero_indegree = [n for n, d in self.in_degree() if d == 0]
+
+            if not zero_indegree:
+                break
+
+            self.remove_nodes_from(zero_indegree)
+
+    @property
+    def dag(self):
+        return nx.DiGraph((u, v) for u, v in self.edges() if v != self.bulk_node)
+
+
+@dataclass(frozen=True)
+class PipeIndexEntry:
+    pipe: Pipe
+    kind: Literal["entry", "exit"]
+
+    @property
+    def position(self) -> int:
+        if self.kind == "entry":
+            return self.pipe.input_position
+        return self.pipe.output_position
+    
+
+
+class RiboSkeleton(RiboGraph):
+    """
+    RiboGraph subclass that holds information about all possible choices of a ribosome
+
+    All edges consist of two RiboNodes and a weight
+    
+    The graph is cyclical through the 'bulk node' (Pos:-1,Phase:-1) by convention
+
+    The parent classes for adding edges are not implemented and instead add_transition is used
+    to ensure that edges of the correct form are added to the graph. 
+
+    Parameters:
+    pipelist: list[Pipe]
+        The pipes from which the choices are to be constructed
+    behaviours: list[FactorBehaviour]
+        The behaviours which apply to ribosomes as they move along the transcript
+
+    """
+
+    def __init__(
+        self,
+        pipelist: list[Pipe],
+        behaviours: list[FactorBehaviour] | None = None,
+        **attr,
+    ):
+        incoming_graph_data=None
+        super().__init__(incoming_graph_data, **attr)
+        self.pipelist = pipelist
+        self.pipelist.sort(reverse=True)
+        
+        self.stack: list[tuple[RiboNode, float]] = []
+        self.behaviours: list[FactorBehaviour] | None = sorted(behaviours) if behaviours else None
+        self.visited: set[RiboNode] = set()
+        self._pipe_index = defaultdict(list)
+        self.expanded: set[RiboNode] = set()
+        self.queued: set[RiboNode] = set()
+        for pipe in self.pipelist:
+            phases = pipe.phase_condition.phases
+
+            entry = PipeIndexEntry(pipe, "entry")
+            exit_ = PipeIndexEntry(pipe, "exit")
+
+            if isinstance(phases, set):
+                for p in phases:
+                    self._pipe_index[p].append(entry)
+            else:
+                self._pipe_index[phases].append(entry)
+
+            self._pipe_index[pipe.output_phase].append(exit_)
+        self._construct()
+
+    def _construct(self):
+        for pipe in self.pipelist:
+            if pipe.phase_condition.phases == -1:
+                factors = pipe.subphase_condition.required or None
+                f_dict = {factor:True for factor in factors} if factors is not None else None
+                source = RiboNode(pipe.input_position, State(-1, **f_dict)) if f_dict \
+                    else RiboNode(pipe.input_position, State(-1))
+                target = pipe.target(source.state)
+                self.add_transition(Transition(self.bulk_node, source, 1))
+                self.add_transition(Transition(source, target, pipe.probability))
+                self._build_graph(target)
+        self._is_valid()
+
+    def _build_graph(self, starting_node: RiboNode):
+        self.stack.append((starting_node, 1))
+        while self.stack:
+            node, weight = self.stack.pop()
+            self.queued.discard(node)
+            self.visited.add(node)
+
+            pipe_indexes = self.next_pipes(node)
+            
+            if not pipe_indexes:
+                raise RuntimeError(
+                    f"Continue flux at node: {node} runs to infinity (no downstream pipes)"
+                )
+            pipes = [idx.pipe for idx in pipe_indexes]
+
+            node_at_pipe = RiboNode(pipe_indexes[0].position, node.state)
+            remaining_weight = weight
+
+            if self.behaviours:
+                for behaviour in self.behaviours:
+                    if behaviour.applies(node, node_at_pipe):
+                        f_trans = behaviour.transitions(node, node_at_pipe, remaining_weight)
+                        if f_trans.weight > 0:
+                            remaining_weight -= f_trans.weight
+                            self.add_transition(f_trans)
+                            self._expand_node(f_trans.target, pipes)
+
+            if remaining_weight > 0:
+                self.add_transition(Transition(node, node_at_pipe, remaining_weight))
+                left_over = self._pipe_out(node_at_pipe, pipes, weight_scale=1)
+                if left_over > 0:
+                    self._add_to_stack(node_at_pipe, left_over)
+
+    def _expand_node(self, node: RiboNode, pipes: list[Pipe]):
+        if node in self.expanded:
+            return
+
+        self.expanded.add(node)
+
+        if node.phase == -1:
+            self.add_transition(Transition(node, self.bulk_node, 1))
+            return
+
+        unpiped = self._pipe_out(node, pipes, weight_scale=1)
+
+        if unpiped > 0:
+            self._add_to_stack(node, unpiped)
+
+    def _pipe_out(self, node: RiboNode, pipes: list[Pipe], weight_scale: float) -> float:
+        """
+        Add transitions from node through any pipes whose enter() condition is met.
+        Returns the remaining (unpiped) weight fraction.
+        """
+        unpiped = weight_scale
+        for pipe in pipes:
+            if not pipe.enter(node.state):
+                continue
+            pipe_target = pipe.target(node.state)
+            self.add_transition(
+                Transition(node, pipe_target, pipe.probability * unpiped)
+            )
+            flow = pipe.probability * unpiped
+            unpiped -= flow
+            if pipe_target.phase == -1:
+                self.add_transition(Transition(pipe_target, self.bulk_node, 1))
+            else:
+                self._add_to_stack(pipe_target, 1)
+        return unpiped
+
+    def _add_to_stack(self, node, weight):
+        if node not in self.visited and node not in self.queued:
+            self.stack.append((node, weight))
+            self.queued.add(node)
+
+    def next_pipes(self, node: RiboNode) -> list[PipeIndexEntry] | None:
+        candidates = self._pipe_index.get(node.phase)
+
+        if not candidates:
+            return None
+
+        min_pos = None
+        result = []
+
+        for entry in candidates:
+            pos = entry.position
+
+            if pos <= node.position:
+                continue
+
+            if min_pos is None or pos < min_pos:
+                min_pos = pos
+                result = [entry]
+
+            elif pos == min_pos:
+                result.append(entry)
+
+        return result or None
+    
+
+    def add_transition(self, transition: Transition):
+        if isinstance(transition, Transition):
+            if transition.weight == 0:
+                return
+            super().add_edge(transition.source, transition.target, weight=transition.weight)
+        else:
+            raise TypeError(f"add_transition requires type 'Transition', got {type(transition).__name__}")
+
+    def add_transitions_from(self, transitions):
+        for t in transitions:
+            self.add_transition(t)
+
+
+
+    def _is_valid_weight(self):
+
+        for node in self.nodes:
+
+            if node.phase == -1:
+                continue
+
+            if not any(True for _ in self.successors(node)):
+                continue
+
+            total_weight = 0
+
+            for _, _, w in self.out_edges(node, data='weight'):
+                total_weight += w
+
+            if total_weight > 1:
+                raise RuntimeError(f"Weight from node: {node} exceeds 1")
+
+    def _is_valid(self):
+        self._is_valid_weight()
+
+
+class FluxGraph(RiboGraph):
     """
     A directed graph representing ribosomal flux through phase space, built from a TransitionMap.
 
     RiboGraphFlux models the movement of ribosomes along an mRNA transcript by propagating
-    flux from a bulk cytoplasmic pool through a network of ribosomal phase-space nodes.
-    Each edge carries flux values that account for initiation, elongation, termination,
-    reinitiation, and decay during scanning and translation.
+    flux from a bulk cytoplasmic pool through a network of ribosomal phase-space nodes base on
+    a RiboSkeleton
 
     The graph is constructed automatically on instantiation via construct(), which:
-      - Removes edges below the weight cutoff from the transition map
-      - Normalises entry flux across all initiation sites
-      - Propagates flux iteratively through the graph, applying decay and branching
-      - Collapses redundant intermediate nodes
+        -Propagates flux along the skeleton nodes, ignoring edges that dont meet the flux cutoff
+
 
     Parameters
     ----------
-    transition_map : TransitionMap
-        The transition map from which the flux graph is built. Encodes the probability
-        of moving between ribosomal phase-space nodes.
-    half_life_scanning : float or None
-        The half-life (in nucleotides) of a scanning 40S subunit. Controls the rate of
-        decay applied to flux along scanning edges (phase == 0). If None, no scanning
-        decay is applied.
-    half_life_translation : float or None
-        The half-life (in nucleotides) of an elongating ribosome. Controls
-        decay along translation edges (phase > 0). If None, no translational decay is applied.
-    weight_cutoff : float
-        Edges in the transition map with weight below this value are removed before
-        flux propagation. Default is 0.0.
-    reinitiation_half_life : float or None
-        Controls the decay of reinitiation potential as a function of distance from the
-        initiation node. Larger values allow reinitiation over greater distances.
-        If None, reinitiation potential does not decay.
-    ternary_complex_half_life : float or None
-        Half-life governing the replenishment of ternary complex during scanning after
-        a termination event. Used to scale initiation probability following reinitiation.
-        If None, ternary complex is assumed to be fully available at all times.
+    skeleton : RiboSkeleton
+        The map which provides the possible paths of the ribosomes
     flux_cutoff : float
         Flux values below this threshold are not propagated further, pruning negligible
-        branches from the graph. Default is 0.001.
-    retention_limit : int or None
-        Maximum number of consecutive retention events (ribosome returning to a scanning state on the same
-        mRNA after termination) allowed per path. If None, retention is unlimited.
-        Default is 1.
+        branches from the graph. Default is 0.0.
+
 
     Attributes
     ----------
-    transitions : TransitionMap
-        The underlying transition map used to build the graph.
-    ribopaths : list of list of tuple
+    skeleton : RiboSkeleton
+        The underlying map used to build the graph.
+    ribopaths : list of list of RiboNode
         All paths representing continuous 40S association with the mRNA, from the
-        first loading node to the bulk node. Each path is a list of edge tuples (u, v).
+        first loading node to the bulk node. Each path is a list of RiboNodes.
     translons : list of list of tuple
         All sub-paths within ribopaths representing continuous 60S association
-        (i.e., active translation). Each translon is a list of RiboNodes
+        (i.e., active translation). Each translon is a list of RiboNode tuples
         where both nodes have phase > 0.
-
-    Edge Data
-    ---------
-    Each edge (u, v) in the graph carries the following data:
-      flux_start : float
-          Flux entering the edge at node u.
-      flux_end : float
-          Flux remaining at node v after decay along the edge.
-      decay : float
-          Flux lost along the edge due to ribosome drop-off.
 
 
     Methods
@@ -87,17 +363,6 @@ class RiboGraphFlux(RiboGraph):
         given as an ordered list of RiboNodes.
     edge_weight(u, v) -> float
         Returns the fraction of flux leaving node u that is carried by the edge to v.
-    edge_decay(u, v) -> float
-        Returns the fraction of flux lost to ribosome drop-off along the edge from u to v.
-    rein_decay(u, v) -> float
-        Returns the decay factor applied to reinitiation potential between nodes u and v.
-    ternary_complex_proportion(u, v) -> float
-        Returns the fraction of ternary complex available at v, given prior scanning from u.
-    add_transition(source, target, probability)
-        Adds a single transition to the underlying map and reconstructs the flux graph.
-    add_transitions_from(tbunch)
-        Adds multiple transitions from an iterable of (source, target, weight) tuples
-        and reconstructs the flux graph.
 
     Notes
     -----
@@ -138,12 +403,12 @@ class RiboGraphFlux(RiboGraph):
         
 
         # Copy to plain DiGraph to avoid subgraph_view instantiation issues
-        dag = DiGraph(
+        dag = nx.DiGraph(
             (u, v, d) for u, v, d in self.skeleton.edges(data=True)
             if v != self.bulk_node
         )
 
-        for node in topological_sort(dag):
+        for node in nx.topological_sort(dag):
             flux = accumulated[node]
             if not flux:
                 continue
@@ -199,7 +464,7 @@ class RiboGraphFlux(RiboGraph):
         """
         paths = []
         for loading in self.successors(self.bulk_node):
-            for path in all_simple_paths(self, loading, self.bulk_node):
+            for path in nx.all_simple_paths(self, loading, self.bulk_node):
                 paths.append(path)
         return paths
     
@@ -237,7 +502,7 @@ class RiboGraphFlux(RiboGraph):
 
     def flux_proportion(self, u:RiboNode, v:RiboNode) -> float:
         total_proportion = 0
-        for path in all_simple_paths(self, u , v):
+        for path in nx.all_simple_paths(self, u , v):
             total_proportion += self.flux_proportion_path(path)
         return total_proportion
     
@@ -305,7 +570,7 @@ class RiboGraphFlux(RiboGraph):
                             flux_end=flux)
                 
         changed = True
-        topo_nodes:list[RiboNode] = list(topological_sort(out.dag))
+        topo_nodes:list[RiboNode] = list(nx.topological_sort(out.dag))
 
         while changed:
             changed = False
