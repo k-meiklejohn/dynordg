@@ -141,7 +141,7 @@ class RiboSkeleton(RiboGraph):
 
     def __init__(
         self,
-        pipelist: list[Pipe],
+        pipelist: list[Pipe] | None = None,
         behaviours: list[FactorBehaviour] | None = None,
         **attr,
     ):
@@ -156,20 +156,21 @@ class RiboSkeleton(RiboGraph):
         self._pipe_index = defaultdict(list)
         self.expanded: set[RiboNode] = set()
         self.queued: set[RiboNode] = set()
-        for pipe in self.pipelist:
-            phases = pipe.phase_condition.phases
+        if self.pipelist:
+            for pipe in self.pipelist:
+                phases = pipe.phase_condition.phases
 
-            entry = PipeIndexEntry(pipe, "entry")
-            exit_ = PipeIndexEntry(pipe, "exit")
+                entry = PipeIndexEntry(pipe, "entry")
+                exit_ = PipeIndexEntry(pipe, "exit")
 
-            if isinstance(phases, set):
-                for p in phases:
-                    self._pipe_index[p].append(entry)
-            else:
-                self._pipe_index[phases].append(entry)
+                if isinstance(phases, set):
+                    for p in phases:
+                        self._pipe_index[p].append(entry)
+                else:
+                    self._pipe_index[phases].append(entry)
 
-            self._pipe_index[pipe.output_phase].append(exit_)
-        self._construct()
+                self._pipe_index[pipe.output_phase].append(exit_)
+            self._construct()
 
     def _construct(self):
         for pipe in self.pipelist:
@@ -375,7 +376,7 @@ class FluxGraph(RiboGraph):
       internal tolerance (flux_error = 1e-15).
     """
 
-    def __init__(self, skeleton: RiboSkeleton, 
+    def __init__(self, skeleton: RiboSkeleton| None = None, 
                  flux_cutoff = 0.0,
                  incoming_graph_data=None, 
                  **attr):
@@ -523,8 +524,11 @@ class FluxGraph(RiboGraph):
 
     def node_flux(self, nbunch: RiboNode) -> float:
         total_flux = 0.0
-        for _, _, flux in self.out_edges(nbunch=nbunch, data='flux'):
-            total_flux += flux
+        flux_keys = ('flux', 'flux_start')
+
+        for _, _, data in self.out_edges(nbunch=nbunch, data=True):
+            for key in flux_keys:
+                total_flux += data.get(key, 0)
         return total_flux 
 
     def _valid_in_out(self):
@@ -551,9 +555,9 @@ class FluxGraph(RiboGraph):
     
     @property
     def simple(self):
-        out = deepcopy(self)
-        out.clear()
+        out = self.__class__()
         out.bulk_node = self.bulk_node.simple
+        out.flux_error = self.flux_error
         for u, v, flux in self.edges(data='flux'):
             u:RiboNode
             v:RiboNode

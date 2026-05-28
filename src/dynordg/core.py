@@ -66,10 +66,6 @@ class State:
     @property
     def subphases(self):
         return self._subphases
-    
-    @property
-    def __members(self):
-        return (self.phase, self.subphases)
 
     def __repr__(self):
         if len(self.subphases):
@@ -79,9 +75,11 @@ class State:
         
     def __eq__(self, value):
         if isinstance(value, State):
-            return self.__members == value.__members
-        else:
-            return False
+            return self._hash == value._hash and self._subphases == value._subphases and self.phase == value.phase
+        return False
+
+    def __hash__(self) -> int:
+        return self._hash
         
 
     def __add__(self, other):
@@ -110,9 +108,6 @@ class State:
             out_dict.pop(other)
             return State(self.phase, **out_dict)
         return self
-    
-    def __hash__(self) -> int:
-        return hash(self.__members)
     
     def __contains__(self, item):
         return item in self._keys
@@ -163,16 +158,13 @@ class RiboNode:
 
     """
     def __init__(self, position: int, state: State):
-
         if not isinstance(position, int):
             raise TypeError(f'RiboNode position must be int, got {position}')
-
-        self.position:int = position
-        self.state:State = state
+        self.position: int = position
+        self.state: State = state
+        self._members = (position, state)      # computed once
+        self._hash = hash(self._members)       # computed once
     
-    @property
-    def __members(self):
-        return (self.position, self.state)
         
     @property
     def phase(self) -> int:
@@ -198,13 +190,15 @@ class RiboNode:
         
     def __eq__(self, value):
         if isinstance(value, RiboNode):
-            return self.__members == value.__members
-        else:
-            return False
+            return (self._hash == value._hash and 
+                    self.position == value.position and 
+                    self.state._hash == value.state._hash and
+                    self.state._subphases == value.state._subphases)
+        return False
 
     
     def __hash__(self) -> int:
-        return hash(self.__members)
+        return self._hash
     
     def __add__(self, other):
         return RiboNode(self.position, self.state + other)
@@ -616,13 +610,21 @@ class Retention(Reading):
 
     @property
     def pipe(self) -> Pipe:
-        return Pipe(output_phase=0,
-                    probability=self.probability,
-                    input_position=self.position,
-                    phase_condition=PhaseCondition(self.frame),
-                    subphase_condition=SubphaseCondition('scanning_factors', ceiling={'retained':self.limit}),
-                    add_factors='retained'
-                    )
+        if self.limit is not None:
+            return Pipe(output_phase=0,
+                        probability=self.probability,
+                        input_position=self.position,
+                        phase_condition=PhaseCondition(self.frame),
+                        subphase_condition=SubphaseCondition('scanning_factors', ceiling={'retained':self.limit}),
+                        add_factors='retained'
+                        )
+        else:
+            return Pipe(output_phase=0,
+                        probability=self.probability,
+                        input_position=self.position,
+                        phase_condition=PhaseCondition(self.frame),
+                        subphase_condition=SubphaseCondition('scanning_factors'),
+                        )
     
 class Frameshift(Reading):
     def __init__(self, position, probability, amount: int):

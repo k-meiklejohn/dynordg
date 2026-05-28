@@ -262,8 +262,15 @@ class EdgeGeom:
     is_event: bool     = False
     flux_end: float    = 0.0
 
+    @property
+    def point_list(self) -> list[Pt]:
+        pts = []
+        for k in _GEOM_POINT_KEYS:
+            v = getattr(self,k)
+            if v is not None:
+                pts.append(v)
+        return pts
 
-    from dataclasses import dataclass
 
 @dataclass
 class LayoutResult:
@@ -291,9 +298,12 @@ class LayoutResult:
         bounding box of the figure or for applying a global coordinate transform.
     """
     geoms: dict[Edge, EdgeGeom]
+    _all_points_cache = None
 
     @property
     def all_points(self) -> list[Pt]:
+        if self._all_points_cache is not None:
+            return self._all_points_cache
         pts: list[Pt] = []
         for g in self.geoms.values():
             for attr in _GEOM_POINT_KEYS:
@@ -302,6 +312,7 @@ class LayoutResult:
                     pts.append(pt)
             for rect in g.helper_rects:
                 pts.extend(rect)
+        self._all_points_cache = pts
         return pts
 
 
@@ -365,24 +376,37 @@ def _shift_pt(pt: Pt, delta: float, axis: Literal['x', 'y']) -> Pt:
     return (x + delta, y) if axis == 'x' else (x, y + delta)
 
 
-def _shift_geom(geom: EdgeGeom, delta: float, axis: Literal['x', 'y'],
-                keys: list[str]) -> None:
-    """Shift named point attributes of *geom* in-place."""
+def _shift_geom_y(geom: EdgeGeom, delta: float, keys: list[str]) -> None:
     for k in keys:
         pt = getattr(geom, k)
         if pt is not None:
-            setattr(geom, k, _shift_pt(pt, delta, axis))
+            setattr(geom, k, (pt[0], pt[1] + delta))
     if 'out0' in keys:
         geom.out_helper_rects = [
-            [_shift_pt(pt, delta, axis) for pt in rect]
+            [(x, y + delta) for x, y in rect]
             for rect in geom.out_helper_rects
         ]
     if 'in0' in keys:
         geom.in_helper_rects = [
-            [_shift_pt(pt, delta, axis) for pt in rect]
+            [(x, y + delta) for x, y in rect]
             for rect in geom.in_helper_rects
         ]
 
+def _shift_geom_x(geom: EdgeGeom, delta: float, keys: list[str]) -> None:
+    for k in keys:
+        pt = getattr(geom, k)
+        if pt is not None:
+            setattr(geom, k, (pt[0] + delta, pt[1]))
+    if 'out0' in keys:
+        geom.out_helper_rects = [
+            [(x + delta, y) for x, y in rect]
+            for rect in geom.out_helper_rects
+        ]
+    if 'in0' in keys:
+        geom.in_helper_rects = [
+            [(x + delta, y) for x, y in rect]
+            for rect in geom.in_helper_rects
+        ]
 class LayoutEngine:
     """
     Converts a RiboGraph flux graph into a renderer-ready LayoutResult.
@@ -472,11 +496,29 @@ class LayoutEngine:
     def __init__(self, log_scale: float = 1):
         self.log_scale = log_scale
 
+
+
+    def _build_edge_index(self, graph):
+        out_idx = {n: [] for n in graph.nodes}
+        in_idx  = {n: [] for n in graph.nodes}
+        # bulk edges anchored at each non-bulk node
+        bulk_out_idx = {n: [] for n in graph.nodes}  # node → drop edges (u=node, v=bulk)
+        bulk_in_idx  = {n: [] for n in graph.nodes}  # node → load edges (u=bulk, v=node)
+        for u, v in graph.edges:
+            out_idx[u].append((u, v))
+            in_idx[v].append((u, v))
+            if v.phase == -1:
+                bulk_out_idx[u].append((u, v))
+            if u.phase == -1:
+                bulk_in_idx[v].append((u, v))
+        return out_idx, in_idx, bulk_out_idx, bulk_in_idx
+
     # ── Entry point ──────────────────────────────────────────────────────────
 
     def run(self, graph: RiboGraph) -> LayoutResult:
         node_x = self._node_x_positions(graph)
-
+        self._out_idx, self._in_idx, self._bulk_out_idx, self._bulk_in_idx= self._build_edge_index(graph)
+        self._topo_order = list(topological_sort(graph))
         specs     = self.classify_edges(graph)
         layouts   = self.order_nodes(graph, specs)
         geoms     = self.compute_geometries(graph, specs, layouts, node_x)
@@ -563,41 +605,34 @@ class LayoutEngine:
         non-bulk specs are populated.
         """
 
+    # Build per-node lookup once instead of scanning all specs each time
+        in_specs_by_node  = {}   # node → list of specs where v == node, u.phase != -1
+        out_specs_by_node = {}   # node → list of specs where u == node, v.phase != -1
+        for (u, v), s in specs.items():
+            if u.phase != -1 and v.phase != -1:
+                out_specs_by_node.setdefault(u, []).append(s)
+                in_specs_by_node.setdefault(v, []).append(s)
+
         for node in graph.nodes:
             if node.phase == -1:
                 continue
             bulk_edges = self._bulk_edges_at(node, graph)
             for bulk_node, direction in bulk_edges.items():
-                # load: bulk → node
                 key = (bulk_node, node)
                 if key in specs and specs[key].direction is None:
-                    total = sum(
-                        s.direction or 0
-                        for (u, v), s in specs.items()
-                        if v == node and u.phase != -1
-                    )
+                    total = sum(s.direction or 0 for s in in_specs_by_node.get(node, []))
                     specs[key].direction = -1 if total >= 0 else 1
 
-                # drop: node → bulk
                 key = (node, bulk_node)
                 if key in specs and specs[key].direction is None:
-                    total_out = sum(
-                        s.direction or 0
-                        for (u, v), s in specs.items()
-                        if u == node and v.phase != -1
-                    )
-                    total_in = sum(
-                        s.direction or 0
-                        for (u, v), s in specs.items()
-                        if v == node and u.phase != -1
-                    )
+                    total_out = sum(s.direction or 0 for s in out_specs_by_node.get(node, []))
+                    total_in  = sum(s.direction or 0 for s in in_specs_by_node.get(node, []))
                     specs[key].direction = -1 if (total_out - total_in) > 0 else 1
 
-    def _bulk_edges_at(self, node: RiboNode,
-                       graph: RiboGraph) -> dict[RiboNode, int]:
+    def _bulk_edges_at(self, node, graph):
         return {
-            **{v: 1  for u, v in graph.edges if u == node and v.phase == -1},
-            **{u: -1 for u, v in graph.edges if v == node and u.phase == -1},
+            **{v: 1  for u, v in self._bulk_out_idx[node]},
+            **{u: -1 for u, v in self._bulk_in_idx[node]},
         }
 
     # ── Phase 2: order ───────────────────────────────────────────────────────
@@ -923,27 +958,32 @@ class LayoutEngine:
         Each pass calls _shift_node_geoms() — no direct dict mutation.
         """
         self._align_horizontal(graph, geoms, layouts)
+        self._diagnose_horizontal(geoms)   # ← add this
         self._stack_phases(graph, geoms, layouts, buffer=1.5)
         self._centre_events(graph, geoms, layouts)
         return LayoutResult(geoms=geoms)
+    
 
-    def _align_horizontal(
-        self,
-        graph:   RiboGraph,
-        geoms:   dict[Edge, EdgeGeom],
-        layouts: dict[RiboNode, NodeLayout],
-    ) -> None:
+    def _diagnose_horizontal(self, geoms):
+        for (u, v), g in geoms.items():
+            if g.is_event or g.out_bot is None or g.in_bot is None:
+                continue
+            diff = abs(g.out_bot[1] - g.in_bot[1])
+            if diff > 1e-6:
+                print(f"MISALIGNED {u} → {v}: out_bot={g.out_bot[1]:.4f} in_bot={g.in_bot[1]:.4f} diff={diff:.4f}")
+    
+    def _align_horizontal(self, graph, geoms, layouts):
         MAX_PASSES = len(list(graph.nodes)) * 4 + 10
-
-        for _ in range(MAX_PASSES):
+        watch = {  # positions from your misaligned edges
+            (150, 3), (248, 2)
+        }
+        
+        for pass_num in range(MAX_PASSES):
             changed = False
-
-            for node in topological_sort(graph):
+            for node in self._topo_order:
                 if node.phase == -1:
                     continue
-
-                # Collect the max agreed-y this node needs to shift to,
-                # across ALL its edges simultaneously
+                
                 max_out_delta = 0.0
                 max_in_delta  = 0.0
 
@@ -963,21 +1003,16 @@ class LayoutEngine:
                     if agreed > g.in_bot[1]:
                         max_in_delta = max(max_in_delta, agreed - g.in_bot[1])
 
-                # Apply the largest single shift needed — one move settles all edges
                 delta = max(max_out_delta, max_in_delta)
+                
+                
                 if delta > 1e-9:
                     self._shift_node_geoms(node, delta, 'y', geoms, layouts, graph)
                     changed = True
 
             if not changed:
                 break
-        else:
-            import warnings
-            warnings.warn(
-                f"_align_horizontal did not fully converge; layout may be approximate.",
-                stacklevel=2,
-            )
-
+                
     # ── 4b: phase stacking ────────────────────────────────────────────────────
 
     def _stack_phases(
@@ -1092,26 +1127,25 @@ class LayoutEngine:
         this node are handled separately because bulk nodes have no NodeLayout.
         """
         for edges, side in (
-            (graph.out_edges(node), 'out'),
-            (graph.in_edges(node),  'in'),
-        ):
-            for u, v in edges:
-                g    = geoms.get((u, v))
-                if g is None:
-                    continue
-                keys = self._OWNED[(g.is_event, side)]
-                _shift_geom(g, delta, axis, keys)
+                (self._out_idx[node], 'out'),
+                (self._in_idx[node],  'in'),
+            ):
+                for u, v in edges:
+                    g = geoms.get((u, v))
+                    if g is None:
+                        continue
+                    keys = self._OWNED[(g.is_event, side)]
+                    (_shift_geom_y if axis == 'y' else _shift_geom_x)(g, delta, keys)
 
-        # Also shift bulk edge endpoints anchored at this node
-        for u, v in graph.edges:
-            if u == node and v.phase == -1:
-                g = geoms.get((u, v))
-                if g:
-                    _shift_geom(g, delta, axis, ['in1', 'in0', 'in_extent', 'in_left_base', 'in_right_base'])
-            elif v == node and u.phase == -1:
-                g = geoms.get((u, v))
-                if g:
-                    _shift_geom(g, delta, axis, ['out1', 'out0', 'out_extent', 'out_left_base', 'out_right_base'])
+        # bulk — now O(degree) not O(E)
+        for u, v in self._bulk_out_idx[node]:
+            g = geoms.get((u, v))
+            if g:
+                (_shift_geom_y if axis == 'y' else _shift_geom_x)(g, delta, ['in1', 'in0', 'in_extent', 'in_left_base', 'in_right_base'])
+        for u, v in self._bulk_in_idx[node]:
+            g = geoms.get((u, v))
+            if g:
+                (_shift_geom_y if axis == 'y' else _shift_geom_x)(g, delta, ['out1', 'out0', 'out_extent', 'out_left_base', 'out_right_base'])
 
     # ── Point-set helpers ─────────────────────────────────────────────────────
 
@@ -1503,23 +1537,18 @@ class RiboRenderer:
                 clip_on=False,
             )
 
-    def render(self, layout: LayoutResult,
-            node_x: dict | None = None) -> Figure:
-        fig, ax = plt.subplots(figsize=self.fig_size, dpi=self.dpi)
+    def render(self, layout: LayoutResult, node_x: dict | None = None) -> Figure:
+        fig = plt.figure(figsize=self.fig_size, dpi=self.dpi)
+        ax = fig.add_axes([0, 0, 1, 1])
         ax.set_aspect('equal')
         ax.axis('off')
-
         self._set_axis_limits(ax, layout)
-
         primitives = self._collect_primitives(layout)
         for prim in sorted(primitives, key=lambda p: p.zorder):
             prim.patch.set_transform(ax.transData)
             ax.add_patch(prim.patch)
-
         if node_x is not None:
             self._draw_position_labels(ax, layout, node_x)
-
-        fig.tight_layout()
         return fig
 
     # ── Primitive collection ─────────────────────────────────────────────────
@@ -1533,6 +1562,9 @@ class RiboRenderer:
             out.extend(painter.primitives())
 
         return out
+    
+    def _repr_mimebundle_(self, **kwargs):
+        return {}
     
     # ── Style resolution ─────────────────────────────────────────────────────
 
@@ -1677,29 +1709,19 @@ class RiboGraphVis(RiboGraph):
         return self.fig
 
     def show(self) -> None:
-        """
-        Display the figure in the current environment.
-
-        Uses IPython.display() when running inside a Jupyter notebook so the
-        figure appears inline.  Falls back to plt.show(block=True) for
-        scripts and desktop environments.  Raises RuntimeError if
-        compute_layout() has not been called.
-        """
-
         if self.fig is None:
             raise RuntimeError("Call compute_layout() first")
-
         try:
-            # Works nicely in notebooks
             from IPython.core.getipython import get_ipython
             if get_ipython() is not None:
+                from IPython.display import display
                 display(self.fig)
                 return
         except Exception:
             pass
-
-        # Fallback for scripts / desktop
-        show(block=True)
+        import matplotlib.pyplot as plt
+        plt.figure(self.fig)
+        plt.show(block=True)
 
     def save(self, filename='output.png', dpi=150, format=None, **kwargs):
         """
