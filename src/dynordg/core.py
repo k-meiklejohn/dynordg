@@ -851,9 +851,11 @@ class Transcript(SeqRecord):
         if not self.seq:
             raise ValueError(f"Sequence for this transcript does not exist")
         product = ''
+        exclude = 0
         for segment in translon:
-            start = segment[0].position - 1
-            end   = segment[1].position - 1
+            start = segment[0].position - 1 + exclude
+            exclude = 3
+            end   = segment[1].position + 2
             seqment = self.seq[start: end]
             product += Seq.translate(seqment)
         return product
