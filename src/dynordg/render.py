@@ -7,7 +7,7 @@ from typing import Literal
 from matplotlib.pyplot import show
 from matplotlib.figure import Figure
 from dataclasses import field
-from .graph import RiboGraph, FluxGraph
+from .graph import RiboGraph, SimpleFluxGraph, FluxGraph
 
 
 
@@ -1671,7 +1671,7 @@ class RiboGraphVis(RiboGraph):
 
     def __init__(
         self,
-        incoming_graph_data: FluxGraph,
+        graph_to_render: FluxGraph|SimpleFluxGraph,
         fig_size:  tuple = (12, 6),
         dpi:       int   = 150,
         log_scale: float = 1,
@@ -1683,7 +1683,10 @@ class RiboGraphVis(RiboGraph):
         self.renderer = renderer or RiboRenderer(fig_size=fig_size, dpi=dpi)
 
         super().__init__(**attr)
-        source = incoming_graph_data.simple
+        if isinstance(graph_to_render, SimpleFluxGraph):
+            source = graph_to_render
+        elif isinstance(graph_to_render, FluxGraph):
+            source = graph_to_render.simple
         source.prune_recycle_edges()
         for node in source.nodes:
             self.add_node(node)

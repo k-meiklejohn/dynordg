@@ -326,6 +326,7 @@ class RiboSkeleton(RiboGraph):
         self._is_valid_weight()
 
     def smooth_all_weights(self, by_factor:float|None=None):
+        """Redistribute the weight from all nodes more evenly"""
         for node in self.nodes:
             node:RiboNode
             self.smooth_node_weight(node=node, by_factor=by_factor)
@@ -333,19 +334,17 @@ class RiboSkeleton(RiboGraph):
             
 
     def smooth_node_weight(self, node:RiboNode, by_factor:float|None=None):
+        """Redistribute weight more evenly from a node"""
         if by_factor != None:
             if by_factor < 0:
                 raise ValueError(f"by_factor must be greater than or equal to 0, got {by_factor}")
             out_num = self.out_degree(node)
             target = 1/out_num
-            print(f"====={node}======")
-            print(target)
+        
             for u,v,weight in self.out_edges(node, data='weight'):
                 distance = abs(target - weight)
                 distance = - distance if weight > target else distance
-                print(self[u][v]['weight'])
-                self[u][v]['weight'] = weight + (target - weight) * (1 - 1/by_factor)
-                print(self[u][v]['weight'])
+                self[u][v]['weight'] = weight + distance * (1 - 1/by_factor)
         else:
             for u,v,weight in self.out_edges(node, data='weight'):
                 self[u][v]['weight'] = target
@@ -552,13 +551,10 @@ class FluxGraph(RiboGraph):
 
         return entry_proportion * path_proportion
 
-    def node_flux(self, nbunch: RiboNode) -> float:
+    def node_flux(self, node: RiboNode) -> float:
         total_flux = 0.0
-        flux_keys = ('flux', 'flux_start')
-
-        for _, _, data in self.out_edges(nbunch=nbunch, data=True):
-            for key in flux_keys:
-                total_flux += data.get(key, 0)
+        for _, _, flux in self.out_edges(nbunch=node, data='flux'):
+            total_flux += flux
         return total_flux 
 
     def _valid_in_out(self):
@@ -581,14 +577,12 @@ class FluxGraph(RiboGraph):
                           'and can be ignored to your deisred level of accuracy.')
             
     def edge_weight(self, u: RiboNode,v: RiboNode):
-        if 'flux' in self[u][v]:
-            return self[u][v]['flux'] / self.node_flux(u)
-        else:
-            return self[u][v]['flux_start'] / self.node_flux(u)
+        return self[u][v]['flux'] / self.node_flux(u)
+
     
     @property
-    def simple(self):
-        out = self.__class__()
+    def simple(self) -> "SimpleFluxGraph":
+        out = SimpleFluxGraph()
         out.bulk_node = self.bulk_node.simple
         out.flux_error = self.flux_error
         for u, v, flux in self.edges(data='flux'):
@@ -685,7 +679,7 @@ class FluxGraph(RiboGraph):
 
                 changed = True
                 break  # restart topo walk with updated graph
-        return(out)
+        return out
 
     
     def prune_recycle_edges(self) -> None:
@@ -711,3 +705,17 @@ class FluxGraph(RiboGraph):
         for u,v in self.edges:
             out.add_transition(Transition(u,v,self.edge_weight(u,v)))
         return out
+    
+
+class SimpleFluxGraph(FluxGraph):
+    def __init__(self, skeleton = None, flux_cutoff=0, **attr):
+        super().__init__(skeleton, flux_cutoff, **attr)
+
+    def edge_weight(self, u, v):
+        return self[u][v]['flux_start'] / self.node_flux(u)
+    
+    def node_flux(self, node):
+        total_flux = 0.0
+        for _, _, flux in self.out_edges(nbunch=node, data='flux_start'):
+            total_flux += flux
+        return total_flux 
