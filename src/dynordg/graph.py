@@ -159,7 +159,6 @@ class RiboSkeleton(RiboGraph):
             self.pipelist.sort(reverse=True)
             for pipe in self.pipelist:
 
-
                 phases = pipe.phase_condition.phases
 
                 entry = PipeIndexEntry(pipe, "entry")
@@ -326,6 +325,32 @@ class RiboSkeleton(RiboGraph):
     def _is_valid(self):
         self._is_valid_weight()
 
+    def smooth_all_weights(self, by_factor:float|None=None):
+        for node in self.nodes:
+            node:RiboNode
+            self.smooth_node_weight(node=node, by_factor=by_factor)
+        self._is_valid()
+            
+
+    def smooth_node_weight(self, node:RiboNode, by_factor:float|None=None):
+        if by_factor != None:
+            if by_factor < 0:
+                raise ValueError(f"by_factor must be greater than or equal to 0, got {by_factor}")
+            out_num = self.out_degree(node)
+            target = 1/out_num
+            print(f"====={node}======")
+            print(target)
+            for u,v,weight in self.out_edges(node, data='weight'):
+                distance = abs(target - weight)
+                distance = - distance if weight > target else distance
+                print(self[u][v]['weight'])
+                self[u][v]['weight'] = weight + (target - weight) * (1 - 1/by_factor)
+                print(self[u][v]['weight'])
+        else:
+            for u,v,weight in self.out_edges(node, data='weight'):
+                self[u][v]['weight'] = target
+
+
 
 class FluxGraph(RiboGraph):
     """
@@ -385,15 +410,11 @@ class FluxGraph(RiboGraph):
 
     def __init__(self, skeleton: RiboSkeleton| None = None, 
                  flux_cutoff = 0.0,
-                 incoming_graph_data=None, 
                  **attr):
         
 
-        super().__init__(incoming_graph_data, **attr)
-
+        super().__init__(None, **attr)
         self.skeleton = skeleton
-        if incoming_graph_data is not None:
-            raise ValueError('Incoming graph data must be left empty, graph is calculated from skeleton')
         self.flux_cutoff = flux_cutoff
         self.flux_error = 0.000000000000001
 
@@ -560,7 +581,10 @@ class FluxGraph(RiboGraph):
                           'and can be ignored to your deisred level of accuracy.')
             
     def edge_weight(self, u: RiboNode,v: RiboNode):
-        return self[u][v]['flux'] / self.node_flux(u)
+        if 'flux' in self[u][v]:
+            return self[u][v]['flux'] / self.node_flux(u)
+        else:
+            return self[u][v]['flux_start'] / self.node_flux(u)
     
     @property
     def simple(self):
@@ -679,3 +703,11 @@ class FluxGraph(RiboGraph):
         self.remove_edges_from(dead)
         isolated = [n for n, d in self.degree() if d < 1]
         self.remove_nodes_from(isolated)
+    
+    @property
+    def weight_skeleton(self) -> RiboSkeleton:
+        """Return a Riboskeleton based on the fluxes of this graph"""
+        out = RiboSkeleton()
+        for u,v in self.edges:
+            out.add_transition(Transition(u,v,self.edge_weight(u,v)))
+        return out
