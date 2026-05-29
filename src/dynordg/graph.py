@@ -113,7 +113,7 @@ class PipeIndexEntry:
     kind: Literal["entry", "exit"]
 
     @property
-    def position(self) -> int:
+    def position(self) -> int|None:
         if self.kind == "entry":
             return self.pipe.input_position
         return self.pipe.output_position
@@ -148,7 +148,6 @@ class RiboSkeleton(RiboGraph):
         incoming_graph_data=None
         super().__init__(incoming_graph_data, **attr)
         self.pipelist = pipelist
-        self.pipelist.sort(reverse=True)
         
         self.stack: list[tuple[RiboNode, float]] = []
         self.behaviours: list[FactorBehaviour] | None = sorted(behaviours) if behaviours else None
@@ -157,7 +156,10 @@ class RiboSkeleton(RiboGraph):
         self.expanded: set[RiboNode] = set()
         self.queued: set[RiboNode] = set()
         if self.pipelist:
+            self.pipelist.sort(reverse=True)
             for pipe in self.pipelist:
+
+
                 phases = pipe.phase_condition.phases
 
                 entry = PipeIndexEntry(pipe, "entry")
@@ -173,6 +175,8 @@ class RiboSkeleton(RiboGraph):
             self._construct()
 
     def _construct(self):
+        if not self.pipelist:
+            raise RuntimeError('No Pipelist to construct from')
         for pipe in self.pipelist:
             if pipe.phase_condition.phases == -1:
                 factors = pipe.subphase_condition.required or None
@@ -200,7 +204,10 @@ class RiboSkeleton(RiboGraph):
                 )
             pipes = [idx.pipe for idx in pipe_indexes]
 
-            node_at_pipe = RiboNode(pipe_indexes[0].position, node.state)
+            if pipe_indexes[0].position:
+                node_at_pipe = RiboNode(pipe_indexes[0].position, node.state)
+            else:
+                raise RuntimeError("Pipe found without position")
             remaining_weight = weight
 
             if self.behaviours:
@@ -399,6 +406,8 @@ class FluxGraph(RiboGraph):
         self._is_valid()
 
     def _iterate_graph_topo(self):
+        if not self.skeleton:
+            raise RuntimeError('Skeleton does not exist to build from')
         accumulated = defaultdict(float)
         accumulated[self.bulk_node] = 1
         

@@ -90,7 +90,7 @@ class State:
                 out_dict[other] += 1
                 return State(self.phase, **out_dict)
             else:
-                return
+                return self
     
         out_dict[other] = 1
         return State(self.phase, **out_dict)
