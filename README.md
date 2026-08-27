@@ -33,6 +33,9 @@ plot = quick_plot("AUGGCCAUGGCGCCCAGAACUGGGUAA")
 # Render
 plot.show()
 ```
+## API Reference
+Read the API reference [here](https://github.com/k-meiklejohn/dynordg/blob/main/docs/API_REFERENCE.md), for more information on how the software works and 
+how it can be extended to suit the users needs.
 
 ## Example Output
 
