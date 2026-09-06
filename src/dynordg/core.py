@@ -15,6 +15,7 @@ from Bio.SeqRecord import SeqRecord
 from Bio.Seq import Seq
 from .scoring import noderer_start_score
 import Levenshtein
+import re
 
 class State:
     """
@@ -421,7 +422,9 @@ class Pipe:
         if not isinstance(other, Pipe):
             raise TypeError(f"'<' not supported between instances of 'Pipe' and '{type(other).__name__}'")
         return self.subphase_condition < other.subphase_condition
-    
+
+EVENT_REGISTRY = [] #Holds all events that can be recognised
+
 class Event:
     """
     Base class for all event types, subclass to create new event types
@@ -438,7 +441,20 @@ class Event:
     FRAME_DICT = {1:1,
                   2:2,
                   0:3}
-    
+
+    pattern: re.Pattern #Defined for each subclass for recognition in the csv __main__.py module
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if 'pattern' not in cls.__dict__:
+            cls.pattern = re.compile(rf'^{cls.__name__.lower()}')
+        EVENT_REGISTRY.append(cls)
+
+    @classmethod
+    def from_match(cls, match, pos, prob):
+        # default: no extra params needed beyond position/probability
+        return cls(pos, prob)
+
     def __init__(self, position: int, probability: float = 1):
         if not isinstance(position, int):
             raise TypeError(f"Event position must be type 'int', got '{type(position).__name__}'")
@@ -642,6 +658,11 @@ class Frameshift(Reading):
                     output_position=self.position+self.amount,
                     phase_condition=PhaseCondition(self.frame),
                     )
+
+    @classmethod
+    def from_match(cls, match, pos, prob):
+        suffix = match.string[match.end():]
+        return cls(pos, prob, amount=int(suffix))
     
 class LoadScanning(Event):
     @property
