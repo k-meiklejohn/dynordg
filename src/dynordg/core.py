@@ -761,6 +761,7 @@ class Transcript(SeqRecord):
         description: str = "<unknown description>",
         auto = False,
         blank = False,
+        loading_efficiency = 1,
         *args,
         **kwargs,
     ) -> None:
@@ -779,7 +780,7 @@ class Transcript(SeqRecord):
 
         self._events: list[Event] = []
         if not blank:
-            self.add_event(LoadScanning(0, 1))
+            self.add_event(LoadScanning(0, loading_efficiency))
             self.add_event(AllDrop(len(self), 1))
  
         if auto:
