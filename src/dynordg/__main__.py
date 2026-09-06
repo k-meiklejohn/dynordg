@@ -97,7 +97,7 @@ probability: a number x, where 0 < x <= 1
     scan_decay = ScanningDecay(int(args.scanning_decay)) if args.scanning_decay else None
     scan_fact  = ScanningFactorDissociation(int(args.sf_dissociation_halflife)) if args.sf_dissociation_halflife else None
     tran_decay = TranslationDecay(int(args.translation_decay)) if args.translation_decay else None
-    tc_assoc   = TernaryComplexAssociation(int(args.tc_associaiton_halflife)) if args.tc_association_halflife else None
+    tc_assoc   = TernaryComplexAssociation(int(args.tc_association_halflife)) if args.tc_association_halflife else None
 
     for i in [scan_decay,scan_fact,tran_decay,tc_assoc]:
         if i:
