@@ -7,7 +7,7 @@ import networkx as nx
 import warnings
 from functools import cached_property
 from copy import deepcopy
-
+import matplotlib.pyplot as plt
 
 class RiboGraph(nx.DiGraph):
     """
@@ -582,27 +582,33 @@ class FluxGraph(RiboGraph):
     
     @property
     def simple(self) -> "SimpleFluxGraph":
+        nx.draw(self, with_labels=True)
         out = SimpleFluxGraph()
         out.bulk_node = self.bulk_node.simple
         out.flux_error = self.flux_error
-        for u, v, flux in self.edges(data='flux'):
-            u:RiboNode
-            v:RiboNode
 
-            if u.simple == v.simple:
+        def _bulk_simple(node: RiboNode, role: Literal['load', 'drop']) -> RiboNode:
+            return RiboNode(node.position, State(-1, _role=role))
+        
+        for u, v, flux in self.edges(data='flux'):
+            su = u.simple if u.phase != -1 else _bulk_simple(u, 'load')
+            sv = v.simple if v.phase != -1 else _bulk_simple(v, 'drop')
+
+            if su == sv:
                 continue
             elif v.phase == -1 and u.position != v.position and u.phase != -1:
-                out.add_edge(u.simple, RiboNode(v.position, State(u.phase)), flux_start=flux, flux_end=0, decay=flux)
-                out.add_edge(RiboNode(v.position, State(u.phase)), v.simple, flux_start=flux, flux_end=flux)
-    
+                mid = RiboNode(v.position, State(u.phase))
+                out.add_edge(su, mid, flux_start=flux, flux_end=0, decay=flux)
+                out.add_edge(mid, sv, flux_start=flux, flux_end=flux)
             else:
-                out.add_edge(u.simple, v.simple,
-                            flux_start=flux,
-                            flux_end=flux)
+                out.add_edge(su, sv, flux_start=flux, flux_end=flux)
                 
         changed = True
+        # nx.draw(out, with_labels=True)
+        # nx.draw(out.dag, with_labels=True)
+        # plt.show()
         topo_nodes:list[RiboNode] = list(nx.topological_sort(out.dag))
-
+        
         while changed:
             changed = False
 
@@ -639,7 +645,7 @@ class FluxGraph(RiboGraph):
                 out_decay     = out_data.get('decay', 0.0)
                 total_decay   = in_decay + out_decay
                 flux_end      = in_flux_start - total_decay
-                drop_node = RiboNode(out_v.position, State(-1))
+                drop_node = RiboNode(out_v.position, State(-1, _role="drop"))
 
                 # Read existing drop edge data before any mutation
                 existing_drop = (out[out_v][drop_node].copy()

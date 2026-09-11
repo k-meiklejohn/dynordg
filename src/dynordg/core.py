@@ -16,6 +16,7 @@ from Bio.Seq import Seq
 from .scoring import noderer_start_score
 import Levenshtein
 import re
+from typing import Literal
 
 class State:
     """
@@ -179,7 +180,7 @@ class RiboNode:
         return self.state.subphases
 
     @property
-    def simple(self):
+    def simple(self) -> "RiboNode":
         """Return a new node object with only position and phase"""
         return RiboNode(self.position, State(self.phase))
 
