@@ -38,6 +38,16 @@ pip install dynordg
 
 ## Tutorial
 
+### GUI
+
+For ease of use for non-technical users, a simple GUI is provided. Simply run:
+
+```bash
+python -m dynordg --gui
+```
+
+And the graph can be created with a graphical interface.
+
 ### Simple Example
 The easiest way to use dynordg is via its __main__.py script, check it is working by running:
 
@@ -47,7 +57,7 @@ python -m dynordg --help
 
 Which will show the help message.
 
-In order to generate an RDG, it must be provided with a csv in the format position,event,probability. 
+In order to generate an RDG, it must be provided with a CSV in the format position,event,probability. 
 
 - position: a positive integer, expressing the position of the event on the transcript
 

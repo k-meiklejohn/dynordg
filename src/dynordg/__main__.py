@@ -1,4 +1,5 @@
 if __name__ == '__main__':
+    from .gui_3 import launch_gui
     import sys
     import csv
     from Bio import SeqIO
@@ -28,7 +29,7 @@ probability: a number x, where 0 < x <= 1
     )
 
     fasta_requested = any(
-        arg in ('-f', '--fasta') or arg.startswith('--fasta=') or arg.startswith('-f=')
+        arg in ('-f', '--fasta', '--gui') or arg.startswith('--fasta=') or arg.startswith('-f=') 
         for arg in sys.argv
     )
     parser.add_argument(
@@ -49,10 +50,16 @@ probability: a number x, where 0 < x <= 1
     parser.add_argument('-g', '--guess', action='store_true', help='Boolean |EXPERIMENTAL, requires --fasta: if used, the probabilities of initiations will be guessed based on data from Noderer et al. 2014 and Diaz de Arce et al. 2018')
     parser.add_argument('-i', '--inititaion_limit', default=0, help='Float | EXPERIMENTAL, requires --guess: Threshold for an initiation event to be added, default is 0')
     parser.add_argument('-r', '--reinit_prob', default=0, help='Float | EXPERIMENTAL:¸requires --guess Probability of retention of 40S subunit after elongation termination, to be used when assigning probabilities at stop codons, defalut is 1')
+    parser.add_argument('--gui', action='store_true', help='use this option to activate the Graphical User Interface')
+
     args = parser.parse_args()
 
-    if args.filename is None and args.fasta is None:
+    if args.filename is None and not fasta_requested:
         parser.error("filename is required unless --fasta is specified")
+
+    if args.gui:
+        launch_gui()
+        exit()
 
     def parse_event(pos: int, event_str: str, prob: float) -> Event:
         for cls in EVENT_REGISTRY:

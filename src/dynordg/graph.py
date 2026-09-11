@@ -582,7 +582,6 @@ class FluxGraph(RiboGraph):
     
     @property
     def simple(self) -> "SimpleFluxGraph":
-        nx.draw(self, with_labels=True)
         out = SimpleFluxGraph()
         out.bulk_node = self.bulk_node.simple
         out.flux_error = self.flux_error
@@ -604,9 +603,6 @@ class FluxGraph(RiboGraph):
                 out.add_edge(su, sv, flux_start=flux, flux_end=flux)
                 
         changed = True
-        # nx.draw(out, with_labels=True)
-        # nx.draw(out.dag, with_labels=True)
-        # plt.show()
         topo_nodes:list[RiboNode] = list(nx.topological_sort(out.dag))
         
         while changed:
