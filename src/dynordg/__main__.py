@@ -87,7 +87,7 @@ probability: a number x, where 0 < x <= 1
         if args.guess:
             transcript.auto_stop_starts(reinitiation_prob=int(args.reinit_prob))
     else:
-        length = args.transcript_length if args.transcript_length else max_pos + 10
+        length = int(args.transcript_length) if args.transcript_length else max_pos + 10
         transcript = Transcript("N"*length, loading_efficiency=float(args.loading_efficiency))
 
     for event in events:
@@ -106,8 +106,8 @@ probability: a number x, where 0 < x <= 1
 
     skel = RiboSkeleton(transcript.pipes, behaviours=behaviours)
 
-    flux_cutoff = args.flux_cutoff if args.flux_cutoff else 0
-    graph = FluxGraph(skel, flux_cutoff=float(flux_cutoff))
+    flux_cutoff = float(args.flux_cutoff) if args.flux_cutoff else 0
+    graph = FluxGraph(skel, flux_cutoff=flux_cutoff)
 
     plot = RiboGraphVis(graph, log_scale=float(args.log_scale))
 
