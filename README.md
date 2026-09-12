@@ -24,13 +24,13 @@ A environment running a recent version of python
 Command line access
 
 ## Installation
-It is reccomended to install this package in a virtual environment such as venv. To do this, run the following (replace dynordg_test with your preferred environment name):
+It is reccomended, but not necssary, to install this package in a virtual environment such as venv. A virtual environement prevents conflicts between different package versions required by different software. To do this, run the following (replace dynordg_test with your preferred environment name):
 ```bash
 python -m venv dynordg_test
 source dynordg_test/bin/activate
 ```
 
-Then to install run
+Then to install run:
 
 ```bash
 pip install dynordg
@@ -40,13 +40,14 @@ pip install dynordg
 
 ### GUI
 
-For ease of use for non-technical users, a simple GUI is provided. Simply run:
+For ease of use for non-technical users, a simple GUI is provided as a frontend to the CLI. Simply run:
 
 ```bash
 python -m dynordg --gui
 ```
 
 And the graph can be created with a graphical interface.
+To learn more about the various functions, please read the rest of the tutorial which explains the options in greater depth.
 
 ### Simple Example
 The easiest way to use dynordg is via its __main__.py script, check it is working by running:
@@ -106,7 +107,7 @@ python -m dynordg example.csv
 
 
 A window should appear with the graph and looking something like:
-![Basic plot from esample.csv](docs/examples/basic_example.png)
+![Basic plot from esample.csv](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/basic_example.png)
 
 
 
@@ -118,7 +119,7 @@ python -m dynordg example.csv -L 5
 
 Giving us something a little more readable:
 
-![Log scaled graph](docs/examples/basic_log_scale.png)
+![Log scaled graph](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/basic_log_scale.png)
 
 This is a normal MatPlotLib viewing window, and so the normal controls exist, i.e. moving, zooming, saving
 
@@ -144,7 +145,7 @@ python -m dynordg example.csv -L 5 -e 0.1
 
 Gives:
 
-![Low loading efficiency](docs/examples/low_e.png)
+![Low loading efficiency](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/low_e.png)
 
 #### Half-life behaviours
 There are 4 behaviours provided (although more can be specified  - see API reference) to control what happens to the state of ribosomes as they traverse the transcript. The number provided always relates to the distance in nucleotides for half the ribosomes to undergo the specified state change.
@@ -168,7 +169,7 @@ For instance here it is with scanning decay of 100 nucleotides
 ```bash
 python -m dynordg example.csv -L 5 -s 100
 ```
-![Scanning decay](docs/examples/scanning_decay.png)
+![Scanning decay](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/scanning_decay.png)
 
 ### Experimental Features
 
@@ -312,7 +313,7 @@ Read the API reference [here](https://github.com/k-meiklejohn/dynordg/blob/main/
 
 Below is example dynamic RDG (if not a realistic one):
 
-![Example RDG](docs/examples/example.png)
+![Example RDG](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/example.png)
 
 
 

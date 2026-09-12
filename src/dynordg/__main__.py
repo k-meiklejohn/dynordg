@@ -1,5 +1,5 @@
 if __name__ == '__main__':
-    from .gui_3 import launch_gui
+    from .gui import launch_gui
     import sys
     import csv
     from Bio import SeqIO

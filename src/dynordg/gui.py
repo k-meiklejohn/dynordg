@@ -92,6 +92,29 @@ def validate_event_string(event):
     return False
 
 
+def open_path_externally(path):
+    """Try to open `path` with the OS default viewer.
+
+    Returns (success: bool, error_message: str | None) so callers can tell
+    the user what actually happened instead of failing silently.
+    """
+    system = platform.system()
+    try:
+        if system == "Darwin":
+            subprocess.run(["open", path], check=True)
+        elif system == "Windows":
+            os.startfile(path)  # noqa: S606
+        else:
+            subprocess.run(["xdg-open", path], check=True)
+        return True, None
+    except FileNotFoundError as exc:
+        return False, f"No system opener command was found ({exc})."
+    except subprocess.CalledProcessError as exc:
+        return False, f"The system opener reported an error (exit code {exc.returncode})."
+    except Exception as exc:
+        return False, str(exc)
+
+
 # ------------------------------------------------------------ EventDialog --
 class EventDialog(tk.Toplevel):
     """Modal dialog for adding/editing a single (position, event, probability) row."""
@@ -135,7 +158,7 @@ class EventDialog(tk.Toplevel):
         ttk.Entry(body, textvariable=self.prob_var, width=14).grid(row=3, column=1, sticky="w", **pad)
         ttk.Label(
             body,
-            text="0 < p  1  (ires / loadscanning may exceed 1)",
+            text="0 < p \u2264 1  (ires / loadscanning may exceed 1)",
             style="Panel.Muted.TLabel",
         ).grid(row=4, column=0, columnspan=2, sticky="w", padx=8)
 
@@ -285,7 +308,7 @@ class DynoRDGGui(tk.Tk):
         header = ttk.Frame(self, padding=(16, 14, 16, 6))
         header.pack(fill="x")
         ttk.Label(header, text="DynoRDG", style="Header.TLabel").pack(side="left")
-        ttk.Label(header, text="    dynamic ribosome decision graphs", style="Sub.TLabel").pack(side="left")
+        ttk.Label(header, text="  \u2013  dynamic ribosome decision graphs", style="Sub.TLabel").pack(side="left")
 
         main_pane = ttk.Panedwindow(self, orient="horizontal")
         main_pane.pack(fill="both", expand=True, padx=16, pady=(0, 8))
@@ -293,7 +316,7 @@ class DynoRDGGui(tk.Tk):
         left = ttk.Frame(main_pane)
         main_pane.add(left, weight=2)
 
-        right = ttk.Panedwindow(main_pane, orient="vertical")
+        right = ttk.Frame(main_pane)
         main_pane.add(right, weight=3)
 
         self._build_left_panel(left)
@@ -393,10 +416,10 @@ class DynoRDGGui(tk.Tk):
         ttk.Entry(row1, textvariable=self.fasta_path_var).pack(side="left", fill="x", expand=True)
         ttk.Button(row1, text="Browse", command=self._browse_fasta).pack(side="left", padx=(6, 0))
         self.guess_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(fasta_frame, text="Guess start sites from Kozak context ", variable=self.guess_var).pack(anchor="w", pady=(6, 0))
+        ttk.Checkbutton(fasta_frame, text="Guess start sites from Kozak context (-g)", variable=self.guess_var).pack(anchor="w", pady=(6, 0))
         ttk.Label(
             fasta_frame,
-            text="Sets transcript length; experimentally assigns initiation probabilities.",
+            text="Sets transcript length; with -g, experimentally assigns initiation probabilities.",
             style="Muted.TLabel",
             wraplength=380,
         ).pack(anchor="w", pady=(2, 0))
@@ -414,31 +437,35 @@ class DynoRDGGui(tk.Tk):
                 ttk.Label(grid, text=tip, style="Muted.TLabel", wraplength=200).grid(row=row, column=2, sticky="w", padx=(8, 0))
 
         self.length_var = tk.StringVar()
-        add_row(0, "Length :", self.length_var, "default: max position + 10")
+        add_row(0, "Length (-l):", self.length_var, "default: max position + 10")
 
         self.logscale_var = tk.StringVar()
-        add_row(1, "Log scale :", self.logscale_var, "blank = true-to-scale")
-
-        self.eff_var = tk.StringVar(value="1")
-        add_row(2, "5' cap efficiency :", self.eff_var)
+        add_row(1, "Log scale (-L):", self.logscale_var, "blank = true-to-scale")
 
         self.flux_cutoff_var = tk.StringVar()
-        add_row(3, "Flux cutoff :", self.flux_cutoff_var, "experimental / --fasta -g only")
+        add_row(2, "Flux cutoff (-c):", self.flux_cutoff_var, "Redistribute flux below this threshold")
+
+        self.eff_var = tk.StringVar(value="1")
+        add_row(3, "5' cap efficiency (-e):", self.eff_var)
 
         self.trans_decay_var = tk.StringVar()
-        add_row(4, "Translation decay :", self.trans_decay_var, "nt half-life")
+        add_row(4, "Translation decay (-t):", self.trans_decay_var, "nt half-life")
 
         self.scan_decay_var = tk.StringVar()
-        add_row(5, "Scanning decay :", self.scan_decay_var, "nt half-life")
+        add_row(5, "Scanning decay (-s):", self.scan_decay_var, "nt half-life")
 
         self.tc_assoc_var = tk.StringVar()
-        add_row(6, "TC re-association :", self.tc_assoc_var, "nt half-life")
+        add_row(6, "TC re-association (-a):", self.tc_assoc_var, "nt half-life of Ternary complex reassociation during reiniation")
 
         self.sf_diss_var = tk.StringVar()
-        add_row(7, "SF dissociation :", self.sf_diss_var, "nt half-life")
+        add_row(7, "SF dissociation (-d):", self.sf_diss_var, "nt half-life of scanning factor dissociation after initiation")
+
+        ttk.Separator(grid, orient="horizontal").grid(row=8, column=0, columnspan=3, sticky="ew", pady=8)
 
         self.init_limit_var = tk.StringVar()
-        add_row(8, "Initiation limit :", self.init_limit_var, "experimental / --fasta -g only")
+        add_row(9, "Initiation limit (-i):", self.init_limit_var, "experimental / --fasta -g only")
+
+
 
 
 
@@ -450,16 +477,22 @@ class DynoRDGGui(tk.Tk):
             )
         else:
             self.output_hint_var.set(
-                "SVG can't be previewed inline after running, choose an output location above."
+                "The correct .svg extension is added automatically. SVG can't be previewed "
+                "inline  after running, use 'Open externally' or 'Save output as' below."
             )
 
     # ------------------------------------------------------- right panel
     def _build_right_panel(self, parent):
+        # `parent` is now a plain frame (not a paned window) -- the preview
+        # gets the whole right-hand side, since the log lives in its own
+        # popup window instead of a docked pane.
         preview_frame = ttk.LabelFrame(parent, text="Output preview", padding=6)
-        parent.add(preview_frame, weight=3)
+        preview_frame.pack(fill="both", expand=True)
 
         toolbar = ttk.Frame(preview_frame, style="Toolbar.TFrame")
         toolbar.pack(fill="x", pady=(0, 6))
+        ttk.Button(toolbar, text="View log", command=self._show_log_window).pack(side="left")
+        ttk.Separator(toolbar, orient="vertical").pack(side="left", fill="y", padx=8)
         ttk.Button(toolbar, text="Fit", command=self._preview_fit).pack(side="left")
         ttk.Button(toolbar, text="100%", command=self._preview_actual_size).pack(side="left", padx=4)
         ttk.Button(toolbar, text="-", width=3, command=lambda: self._preview_zoom_by(1 / 1.25)).pack(side="left")
@@ -488,10 +521,9 @@ class DynoRDGGui(tk.Tk):
             ).pack(anchor="w", pady=(4, 0))
 
 
-                    # ---- Output ----
+                # ---- Output ----
         out_frame = ttk.LabelFrame(parent, text="Output", padding=8)
-        parent.add(out_frame, weight=1)
-        # out_frame.pack(fill="x", pady=(0, 10))
+        out_frame.pack(fill="x", pady=(0, 10))
 
         fmt_row = ttk.Frame(out_frame)
         fmt_row.pack(fill="x")
@@ -517,16 +549,38 @@ class DynoRDGGui(tk.Tk):
         ttk.Label(out_frame, textvariable=self.output_hint_var, style="Muted.TLabel", wraplength=380).pack(anchor="w", pady=(6, 0))
         self._on_format_change()
 
+        self._build_log_window()
 
-        # log_frame = ttk.LabelFrame(parent, text="Log", padding=6)
-        # parent.add(log_frame, weight=1)
-        # self.log_text = tk.Text(
-        #     log_frame, height=8, wrap="word", state="disabled",
-        #     bg=LOG_BG, fg=LOG_FG, insertbackground=LOG_FG, relief="flat", padx=8, pady=6,
-        # )
-        # self.log_text.tag_configure("cmd", foreground=LOG_ACCENT)
-        # self.log_text.pack(fill="both", expand=True)
-        # ttk.Button(log_frame, text="Clear log", command=self._clear_log).pack(anchor="e", pady=(6, 0))
+    # ------------------------------------------------------------ log window
+    def _build_log_window(self):
+        """Create the log Toplevel once, hidden. `self.log_text` lives here
+        for the lifetime of the app and keeps receiving lines in the
+        background even while the window is closed/hidden."""
+        self.log_window = tk.Toplevel(self)
+        self.log_window.title("DynoRDG  Log")
+        self.log_window.geometry("640x360")
+        self.log_window.configure(bg=BG)
+        # Closing the window just hides it -- the log keeps recording.
+        self.log_window.protocol("WM_DELETE_WINDOW", self.log_window.withdraw)
+
+        frame = ttk.Frame(self.log_window, padding=8)
+        frame.pack(fill="both", expand=True)
+        self.log_text = tk.Text(
+            frame, wrap="word", state="disabled",
+            bg=LOG_BG, fg=LOG_FG, insertbackground=LOG_FG, relief="flat", padx=8, pady=6,
+        )
+        self.log_text.tag_configure("cmd", foreground=LOG_ACCENT)
+        self.log_text.pack(fill="both", expand=True)
+        ttk.Button(frame, text="Clear log", command=self._clear_log).pack(anchor="e", pady=(6, 0))
+
+        self.log_window.withdraw()  # start hidden; "View log" brings it up
+
+    def _show_log_window(self):
+        if not hasattr(self, "log_window") or not self.log_window.winfo_exists():
+            self._build_log_window()
+        self.log_window.deiconify()
+        self.log_window.lift()
+        self.log_window.focus_force()
 
     # --------------------------------------------------------- preview --
     def _draw_placeholder(self, text):
@@ -838,8 +892,8 @@ class DynoRDGGui(tk.Tk):
                     else:
                         self._draw_placeholder(
                             "SVG saved.\nInline preview isn't supported for SVG \n"
-                            "Save using the output box"
-                                            )
+                            "use 'Open externally' or 'Save output as' above."
+                        )
                         self._log(f"Saved SVG to {output_path}.")
                 elif kind == "done":
                     self.run_btn.config(state="normal")
