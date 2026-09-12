@@ -46,8 +46,10 @@ For ease of use for non-technical users, a simple GUI is provided as a frontend 
 python -m dynordg --gui
 ```
 
-And the graph can be created with a graphical interface.
+And the graph can be created with a graphical interface as shown below.
 To learn more about the various functions, please read the rest of the tutorial which explains the options in greater depth.
+
+![GUI](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/gui.png?raw=true)
 
 ### Simple Example
 The easiest way to use dynordg is via its __main__.py script, check it is working by running:
@@ -119,7 +121,7 @@ python -m dynordg example.csv -L 5
 
 Giving us something a little more readable:
 
-![Log scaled graph](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/basic_log_scale.png)
+![Log scaled graph](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/basic_example.png?raw=true)
 
 This is a normal MatPlotLib viewing window, and so the normal controls exist, i.e. moving, zooming, saving
 
@@ -145,7 +147,7 @@ python -m dynordg example.csv -L 5 -e 0.1
 
 Gives:
 
-![Low loading efficiency](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/low_e.png)
+![Low loading efficiency](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/low_e.png?raw=true)
 
 #### Half-life behaviours
 There are 4 behaviours provided (although more can be specified  - see API reference) to control what happens to the state of ribosomes as they traverse the transcript. The number provided always relates to the distance in nucleotides for half the ribosomes to undergo the specified state change.
@@ -169,7 +171,7 @@ For instance here it is with scanning decay of 100 nucleotides
 ```bash
 python -m dynordg example.csv -L 5 -s 100
 ```
-![Scanning decay](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/scanning_decay.png)
+![Scanning decay](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/scanning_decay.png?raw=true)
 
 ### Experimental Features
 
@@ -313,7 +315,7 @@ Read the API reference [here](https://github.com/k-meiklejohn/dynordg/blob/main/
 
 Below is example dynamic RDG (if not a realistic one):
 
-![Example RDG](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/example.png)
+![Example RDG](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/example.png?raw=true)
 
 
 
