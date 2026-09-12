@@ -109,10 +109,10 @@ python -m dynordg example.csv
 
 
 A window should appear with the graph and looking something like:
-![Basic plot from esample.csv](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/basic_example.png)
+![Basic plot from esample.csv](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/basic_example.png?raw=true)
 
 
-
+The actual nucleotide position of a branch point is shown below.
 This looks a little ugly as the graph is to scale with the transcript. By using the log scale  option (-L/--log_scale) we can adjust the relative distances between decision points. 
 
 ```bash
@@ -121,7 +121,7 @@ python -m dynordg example.csv -L 5
 
 Giving us something a little more readable:
 
-![Log scaled graph](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/basic_example.png?raw=true)
+![Log scaled graph](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/basic_log_scale.png?raw=true)
 
 This is a normal MatPlotLib viewing window, and so the normal controls exist, i.e. moving, zooming, saving
 
@@ -152,19 +152,17 @@ Gives:
 #### Half-life behaviours
 There are 4 behaviours provided (although more can be specified  - see API reference) to control what happens to the state of ribosomes as they traverse the transcript. The number provided always relates to the distance in nucleotides for half the ribosomes to undergo the specified state change.
 
-##### -t / --translation_decay
-The rate at which ribosomes drop off the transcript while translating, default is no drop-off.
+- -t / --translation_decay
+    - The rate at which ribosomes drop off the transcript while translating, default is no drop-off.
 
-##### -s / --scanning_decay
-The rate at which ribosomes drop off the transcript while scanning, default is no drop-off.
+- -s / --scanning_decay
+    - The rate at which ribosomes drop off the transcript while scanning, default is no drop-off.
 
-##### -a / --tc_association
-The rate at which ribosomes reassociate with the ternary complex while scanning (necessary for reinititation).
-Default is no reassociation.
+- -a / --tc_association
+    - The rate at which ribosomes reassociate with the ternary complex while scanning (necessary for reinititation). Default is no reassociation.
 
-##### -d / /--sf_dissociaiton
-The rate at which scanning factors dissociate from the ribosome while translating, after initiation. (necessary for 40S retention)
-Default is no reassociation.
+- -d / --sf_dissociaiton
+    - The rate at which scanning factors dissociate from the ribosome while translating, after initiation. (necessary for 40S retention). Default is no reassociation.
 
 
 For instance here it is with scanning decay of 100 nucleotides
