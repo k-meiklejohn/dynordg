@@ -306,6 +306,10 @@ Then use dynordg to assign probabilities to start sites, and generate a graph (d
 python -m dynordg --fasta srd5a1.fasta -g -c 0.1 -i 0.1 -L 5
 ```
 
+Giving:
+
+![SRD5A1 transcript rendered with experimental dynordg kozaak context guessing](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/srd5a1.png)
+
 ## API Reference
 Read the API reference [here](https://github.com/k-meiklejohn/dynordg/blob/main/docs/API_REFERENCE.md), for more information on how the software works and how it can be extended to suit the users needs.
 
