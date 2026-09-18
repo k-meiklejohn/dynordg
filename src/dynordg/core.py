@@ -643,7 +643,7 @@ class Retention(Reading):
                         subphase_condition=SubphaseCondition('scanning_factors'),
                         )
     
-class Frameshift(Reading):
+class Frameshifting(Reading):
     def __init__(self, position, probability, amount: int):
         super().__init__(position, probability)
         self.amount = amount

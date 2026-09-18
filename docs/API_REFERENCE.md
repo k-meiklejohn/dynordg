@@ -68,7 +68,7 @@ Every position in riosomal phase space is represented as a **`RiboNode`**: a
 
 A **`Pipe`** connects a matching `(phase, subphase)` entry condition at one
 position to an output `(phase, subphase)` at another position — it's how an
-**`Event`** (start codon, stop codon, IRES, frameshift, etc.) is translated
+**`Event`** (start codon, stop codon, IRES, frameshifting, etc.) is translated
 into graph transitions. A **`FactorBehaviour`** additionally models gradual
 factor gain/loss (e.g. re-acquiring ternary complex while scanning) that
 happens continuously rather than at a single event.
@@ -201,7 +201,7 @@ one or more `Pipe` transitions when the transcript's `.pipes` is evaluated.
 | `AllDrop(position, probability)` | `Reading` | end-of-transcript catch-all | Any phase → bulk, unconditionally. Added automatically at `len(transcript)` unless `Transcript(..., blank=True)`. |
 | `LoadScanning(position, probability)` | `Event` (any `probability >= 0`) | scanning entry point | Bulk → scanning (phase `0`): requires **both** `ternary_complex` and `scanning_factors` present on the bulk-pool node. Added automatically at position `0` unless `blank=True`. |
 | `IRES(position, probability)` | `Event` | internal ribosome entry | Bulk → translating (cap-independent initiation): requires `ternary_complex`; consumes it; outputs into the frame implied by `position`. |
-| `Frameshift(position, probability, amount)` | `Reading` | frameshift site | position, current frame x →  position + amount, frame y where y = (position + amount) % 3 | 
+| `Frameshifting(position, probability, amount)` | `Reading` | frameshifting site | position, current frame x →  position + amount, frame y where y = (position + amount) % 3 | 
 
 Every event's `.frame` property derives the reading frame from its
 `position % 3` (see the [appendix](#appendix-phase--frame-reference)).
@@ -406,7 +406,7 @@ independently:
 
 - **Colours/styles** — subclass `RiboRenderer` and override the
   `COLOR_DICT` (maps edge-type strings — `'0'`–`'3'`, `'initiation'`,
-  `'40s_retention'`, `'drop'`, `'load'`, `'frameshift'` — to matplotlib
+  `'40s_retention'`, `'drop'`, `'load'`, `'frameshifting'` — to matplotlib
   colours) and/or `STYLE_OVERRIDES` (per-type `alpha`/`linewidth`/`zorder`
   overrides), or override `edge_style(geom) -> EdgeStyle` entirely for full
   control.

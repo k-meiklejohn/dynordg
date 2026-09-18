@@ -17,8 +17,8 @@ event: Any one of the following:
     # initiation
     # termination
     # 40sretention
-    # frameshift[+/-]d+
-        i.e. frameshift+2, frameshift-1, framshift+100 etc.
+    # frameshifting[+/-]d+
+        i.e. frameshifting+2, frameshifting-1, framshift+100 etc.
     # ires
     # scanningload
     # alldrop

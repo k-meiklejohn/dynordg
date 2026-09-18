@@ -69,8 +69,8 @@ In order to generate an RDG, it must be provided with a CSV in the format positi
     * termination
     * 40sretention
     * ires
-    * frameshift[+/-]d+
-        - i.e. frameshift+1, frameshift-22, frameshift+100 etc.
+    * frameshifting[+/-]d+
+        - i.e. frameshifting+1, frameshifting-22, frameshifting+100 etc.
     * loadscanning
     * alldrop
 

@@ -64,12 +64,12 @@ EVENT_TYPES = [
     "termination",
     "40sretention",
     "ires",
-    "frameshift",
+    "frameshifting",
     "loadscanning",
     "alldrop",
 ]
 
-FRAMESHIFT_RE = re.compile(r"^frameshift[+-]\d+$")
+FRAMESHIFTING_RE = re.compile(r"^frameshifting[+-]\d+$")
 
 # ----------------------------------------------------------------- theme --
 BG = "#eef1f7"
@@ -85,9 +85,9 @@ LOG_ACCENT = "#8ecbff"
 
 
 def validate_event_string(event):
-    if event in EVENT_TYPES and event != "frameshift":
+    if event in EVENT_TYPES and event != "frameshifting":
         return True
-    if FRAMESHIFT_RE.match(event):
+    if FRAMESHIFTING_RE.match(event):
         return True
     return False
 
@@ -138,8 +138,8 @@ class EventDialog(tk.Toplevel):
 
         ttk.Label(body, text="Event type:", style="Panel.TLabel").grid(row=1, column=0, sticky="e", **pad)
         base_event = initial["event"] if initial else EVENT_TYPES[0]
-        if initial and FRAMESHIFT_RE.match(initial["event"]):
-            base_event = "frameshift"
+        if initial and FRAMESHIFTING_RE.match(initial["event"]):
+            base_event = "frameshifting"
         self.event_var = tk.StringVar(value=base_event)
         self.event_combo = ttk.Combobox(body, textvariable=self.event_var, values=EVENT_TYPES, state="readonly", width=16)
         self.event_combo.grid(row=1, column=1, sticky="w", **pad)
@@ -162,8 +162,8 @@ class EventDialog(tk.Toplevel):
             style="Panel.Muted.TLabel",
         ).grid(row=4, column=0, columnspan=2, sticky="w", padx=8)
 
-        if initial and FRAMESHIFT_RE.match(initial["event"]):
-            m = re.match(r"^frameshift([+-])(\d+)$", initial["event"])
+        if initial and FRAMESHIFTING_RE.match(initial["event"]):
+            m = re.match(r"^frameshifting([+-])(\d+)$", initial["event"])
             self.fs_sign_var.set(m.group(1))
             self.fs_offset_var.set(m.group(2))
 
@@ -176,7 +176,7 @@ class EventDialog(tk.Toplevel):
         self.wait_window(self)
 
     def _on_event_change(self, *_):
-        if self.event_var.get() == "frameshift":
+        if self.event_var.get() == "frameshifting":
             self.fs_frame.grid()
         else:
             self.fs_frame.grid_remove()
@@ -196,15 +196,15 @@ class EventDialog(tk.Toplevel):
             messagebox.showerror("Invalid input", "Probability must be a number.")
             return
 
-        if self.event_var.get() == "frameshift":
+        if self.event_var.get() == "frameshifting":
             try:
                 offset = int(self.fs_offset_var.get())
                 if offset <= 0:
                     raise ValueError
             except ValueError:
-                messagebox.showerror("Invalid input", "Frameshift offset must be a positive integer.")
+                messagebox.showerror("Invalid input", "Frameshifting offset must be a positive integer.")
                 return
-            event = f"frameshift{self.fs_sign_var.get()}{offset}"
+            event = f"frameshifting{self.fs_sign_var.get()}{offset}"
         else:
             event = self.event_var.get()
 
