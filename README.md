@@ -20,14 +20,53 @@ EXPERIMENTAL:
 This package also provides tools to estimate the probability of translation initiation from sequence based on data from Noderer et al (2014) and Diaz de Arce et al. 2018.
 
 ## Requirements
-A environment running a recent version of python
-Command line access
+A environment running python 3.12 or higher is reccomended. It may still work on earlier versions but it is not supported.
+Command line access i.e. Terminal (Linux/MacOS) or Command Prompt (Windows)
+
+In order to run the GUI, tkinter is required. Install it from your systems package manager:
+
+### Debian/Ubuntu:
+```bash
+sudo apt install python3-tk
+```
+
+### MacOS:
+```zsh
+brew install python-tk
+```
+
+### Windows:
+
+Tkinter should be package with python when installed,
+confirm it has been installed by running in the command line (if python is on path):
+
+```bash
+python
+```
+
+Then:
+```python
+from tkinter import *
+window = Tk()
+window.mainloop()
+```
+This should create a featureless window, confirming that tkinter is installed. If this fails, please seek help in installing tkinter on windows.
+Close the window and then type exit() to exit the python shell. 
+
 
 ## Installation
-It is reccomended, but not necssary, to install this package in a virtual environment such as venv. A virtual environement prevents conflicts between different package versions required by different software. To do this, run the following (replace dynordg_test with your preferred environment name):
+It is reccomended, but not necessary, to install this package in a virtual environment such as venv. A virtual environement prevents conflicts between different package versions required by different software. To do this, run the following (replace dynordg_test with your preferred environment name):
+
+## MacOS/Linux
 ```bash
-python -m venv dynordg_test
-source dynordg_test/bin/activate
+python -m venv dynordg_env
+source dynordg_env/bin/activate
+```
+
+## Windows
+```bash
+python -m venv dynordg_env
+dynordg_env\Scripts\Activate.ps1
 ```
 
 Then to install run:
@@ -46,7 +85,7 @@ For ease of use for non-technical users, a simple GUI is provided as a frontend 
 python -m dynordg --gui
 ```
 
-And the graph can be created with a graphical interface as shown below.
+And the graph can be created with the interface as shown below.
 To learn more about the various functions, please read the rest of the tutorial which explains the options in greater depth.
 
 ![GUI](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/gui.png?raw=true)
@@ -308,7 +347,7 @@ python -m dynordg --fasta srd5a1.fasta -g -c 0.1 -i 0.1 -L 5
 
 Giving:
 
-![SRD5A1 transcript rendered with experimental dynordg kozaak context guessing](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/srd5a1.png)
+![SRD5A1 transcript rendered with experimental dynordg kozak context guessing](https://github.com/k-meiklejohn/dynordg/blob/main/docs/examples/srd5a1.png)
 
 ## API Reference
 Read the API reference [here](https://github.com/k-meiklejohn/dynordg/blob/main/docs/API_REFERENCE.md), for more information on how the software works and how it can be extended to suit the users needs.
