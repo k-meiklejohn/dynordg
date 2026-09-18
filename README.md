@@ -20,7 +20,7 @@ EXPERIMENTAL:
 This package also provides tools to estimate the probability of translation initiation from sequence based on data from Noderer et al (2014) and Diaz de Arce et al. 2018.
 
 ## Requirements
-A environment running python 3.12 or higher is reccomended. It may still work on earlier versions but it is not supported.
+A environment running python 3.12 or higher.
 Command line access i.e. Terminal (Linux/MacOS) or Command Prompt (Windows)
 
 In order to run the GUI, tkinter is required. Install it from your systems package manager:
@@ -66,9 +66,18 @@ source dynordg_env/bin/activate
 ## Windows
 ```bash
 python -m venv dynordg_env
-dynordg_env\Scripts\Activate.ps1
+.\dynordg_env\Scripts\Activate.ps1
 ```
 
+If you get an execution policy error run this once:
+```bash
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+And then activate:
+```bash
+.\dynordg_env\Scripts\Activate.ps1
+```
+## All systems
 Then to install run:
 
 ```bash
@@ -76,6 +85,8 @@ pip install dynordg
 ```
 
 ## Tutorial
+
+Make sure you run these commands in an environment with dynordg installed, as explained in the installation section.
 
 ### GUI
 
