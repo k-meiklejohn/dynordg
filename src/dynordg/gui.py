@@ -62,7 +62,7 @@ except ImportError:
 EVENT_TYPES = [
     "initiation",
     "termination",
-    "40sretention",
+    "retention",
     "ires",
     "frameshifting",
     "loadscanning",

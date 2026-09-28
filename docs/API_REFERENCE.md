@@ -406,7 +406,7 @@ independently:
 
 - **Colours/styles** — subclass `RiboRenderer` and override the
   `COLOR_DICT` (maps edge-type strings — `'0'`–`'3'`, `'initiation'`,
-  `'40s_retention'`, `'drop'`, `'load'`, `'frameshifting'` — to matplotlib
+  `'retention'`, `'drop'`, `'load'`, `'frameshifting'` — to matplotlib
   colours) and/or `STYLE_OVERRIDES` (per-type `alpha`/`linewidth`/`zorder`
   overrides), or override `edge_style(geom) -> EdgeStyle` entirely for full
   control.

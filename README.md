@@ -117,7 +117,7 @@ In order to generate an RDG, it must be provided with a CSV in the format positi
 - event: the type of event that is occuring, must be one of the follwing:
     * initiation
     * termination
-    * 40sretention
+    * retention
     * ires
     * frameshifting[+/-]d+
         - i.e. frameshifting+1, frameshifting-22, frameshifting+100 etc.
@@ -212,7 +212,7 @@ There are 4 behaviours provided (although more can be specified  - see API refer
     - The rate at which ribosomes reassociate with the ternary complex while scanning (necessary for reinititation). Default is no reassociation.
 
 - -d / --sf_dissociaiton
-    - The rate at which scanning factors dissociate from the ribosome while translating, after initiation. (necessary for 40S retention). Default is no reassociation.
+    - The rate at which scanning factors dissociate from the ribosome while translating, after initiation. (necessary for  retention). Default is no reassociation.
 
 
 For instance here it is with scanning decay of 100 nucleotides

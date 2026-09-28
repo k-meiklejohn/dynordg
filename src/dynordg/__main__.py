@@ -16,7 +16,7 @@ position: An integer greater than 0
 event: Any one of the following:
     # initiation
     # termination
-    # 40sretention
+    # retention
     # frameshifting[+/-]d+
         i.e. frameshifting+2, frameshifting-1, framshift+100 etc.
     # ires

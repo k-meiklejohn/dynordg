@@ -30,7 +30,7 @@ Edge = tuple[RiboNode, RiboNode]
 # ─────────────────────────────────────────────────────────────────────────────
 
 EdgeType = Literal[
-    'frameshifting', '40s_retention', 'drop', 'initiation', 'load',
+    'frameshifting', 'retention', 'drop', 'initiation', 'load',
     '0', '1', '2', '3',
 ]
 """
@@ -40,7 +40,7 @@ Semantic classification of an edge in the flux graph.
     'frameshifting'              –  phase-change edge where the ribosome moves forward
                             in position (codon displacement given by shift_n)
     'initiation'         –  60S joining; 40S (phase 0) → 80S (phase > 0)
-    '40s_retention'      –  80S → 40S retention without forward movement
+    'retention'      –  80S → 40S retention without forward movement
     'drop'               –  ribosome dissociates from mRNA; enters bulk pool
     'load'               –  ribosome is recruited from the bulk pool onto mRNA
 """
@@ -326,13 +326,13 @@ _IN_EDGE_ORDER: dict[tuple, int] = {
     # 4 reserved for direction == 0
     ('load',          -1):     5,
     ('frameshifting',         -1, +1): 6,
-    ('40s_retention', -1):     7,
+    ('retention', -1):     7,
     ('frameshifting',         -1, -1): 8,
 }
 
 _OUT_EDGE_ORDER: dict[tuple, int] = {
     ('frameshifting',         -1, -1): 0,
-    ('40s_retention', -1):     1,
+    ('retention', -1):     1,
     ('frameshifting',         -1, +1): 2,
     ('drop',          -1):     3,
     # 4 reserved for direction == 0
@@ -424,7 +424,7 @@ class LayoutEngine:
 
     Phase 1   classify_edges  →  dict[Edge, EdgeSpec]
         Label every edge with its semantic type (load, drop, initiation,
-        40s_retention, shift, or phase-lane continuation), travel direction,
+        retention, shift, or phase-lane continuation), travel direction,
         and codon displacement.  Bulk edge directions are resolved in a
         second sub-pass once all non-bulk edges are classified.
 
@@ -455,7 +455,7 @@ class LayoutEngine:
             not overlap, separated by a configurable buffer.
 
         4c  _centre_events
-            For non-shift event edges (initiation, 40s_retention), split the
+            For non-shift event edges (initiation, retention), split the
             x gap between source and target nodes equally so the edge is
             centred between its two node faces.
 
@@ -577,7 +577,7 @@ class LayoutEngine:
         elif u.phase == 0 and v.phase > 0:
             etype = 'initiation'
         elif u.phase > 0 and v.phase == 0:
-            etype = '40s_retention'
+            etype = 'retention'
         else:
             etype = 'frameshifting'
 
@@ -1227,7 +1227,7 @@ class EdgePainter:
     Decay wedge     Triangle marking flux lost to ribosome drop-off along a
                     scanning or translation edge (purple, zorder - 1).
     Curved tapers   Bézier caps at the node faces of event edges (initiation,
-                    40s_retention, shift), smoothing the band entry/exit.
+                    retention, shift), smoothing the band entry/exit.
     Bulk arrow      Isoceles triangle arrowhead at the free end of load/drop
                     edges pointing toward (load) or away from (drop) the mRNA.
 
@@ -1487,7 +1487,7 @@ class RiboRenderer:
 
     COLOR_DICT: dict[str, str] = {
         'frameshifting':           'red',
-        '40s_retention':   'orange',
+        'retention':   'orange',
         'drop':            'purple',
         'initiation':      'green',
         'load':            'purple',
